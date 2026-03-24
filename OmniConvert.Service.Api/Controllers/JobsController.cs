@@ -5,7 +5,6 @@ using OmniConvert.Service.Application.Jobs;
 using OmniConvert.Service.Application.Profiles;
 using OmniConvert.Service.Contracts.Requests;
 using OmniConvert.Service.Contracts.Responses;
-using OmniConvert.Service.Core.Enums;
 
 [ApiController]
 [Route("api/jobs")]
@@ -27,7 +26,8 @@ public class JobsController : ControllerBase
 
     /// <summary>
     /// Yeni bir dönüşüm işi oluşturur ve kuyruğa ekler.
-    /// Sadece preset, ya da preset + override kombinasyonu gönderilebilir.
+    /// Enum değerleri JSON'da string olarak gönderilir.
+    /// Örnek: "profileKind": "ArchiveColor300Lzw", "colorMode": "Gray"
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> CreateJob(
@@ -37,22 +37,14 @@ public class JobsController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.FileName))
             return BadRequest(new ErrorResponse("FileName zorunludur."));
 
-        if (string.IsNullOrWhiteSpace(request.ProfileKind))
-            return BadRequest(new ErrorResponse("ProfileKind zorunludur."));
-
-        if (!Enum.TryParse<ConversionProfileKind>(
-                request.ProfileKind, ignoreCase: true, out var profileKind))
-        {
-            return BadRequest(new ErrorResponse(
-                $"Geçersiz profil türü: {request.ProfileKind}",
-                "Geçerli değerler: OcrGray300Lzw, OcrBinary300G4, ArchiveColor300Lzw"));
-        }
-
         // Erken validasyon — geçersiz kombinasyon kuyruğa alınmadan reddedilir
         try
         {
             _profileResolver.Resolve(
-                profileKind, request.Dpi, request.ColorMode, request.Compression);
+                request.ProfileKind,
+                request.Dpi,
+                request.ColorMode,
+                request.Compression);
         }
         catch (ArgumentException ex)
         {
@@ -60,8 +52,11 @@ public class JobsController : ControllerBase
         }
 
         var job = await _createHandler.HandleAsync(
-            request.FileName, profileKind,
-            request.Dpi, request.ColorMode, request.Compression,
+            request.FileName,
+            request.ProfileKind,
+            request.Dpi,
+            request.ColorMode,
+            request.Compression,
             cancellationToken);
 
         return Accepted(new CreateConversionJobResponse(

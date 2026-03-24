@@ -5,7 +5,7 @@ using OmniConvert.Service.Core.ValueObjects;
 
 /// <summary>
 /// Preset + kullanıcı override'larından final ConversionProfile üretir.
-/// Geçersiz kombinasyonları reddeder.
+/// Type-safe enum'larla çalışır, geçersiz kombinasyonları reddeder.
 /// </summary>
 public class ConversionProfileResolver
 {
@@ -14,27 +14,33 @@ public class ConversionProfileResolver
         {
             [ConversionProfileKind.OcrGray300Lzw] = new(
                 ConversionProfileKind.OcrGray300Lzw,
-                Dpi: 300, ColorMode: "Gray", CompressionType: "LZW"),
+                Dpi: 300,
+                ColorMode: ColorMode.Gray,
+                CompressionType: CompressionType.LZW),
 
             [ConversionProfileKind.OcrBinary300G4] = new(
                 ConversionProfileKind.OcrBinary300G4,
-                Dpi: 300, ColorMode: "Binary", CompressionType: "G4"),
+                Dpi: 300,
+                ColorMode: ColorMode.Binary,
+                CompressionType: CompressionType.G4),
 
             [ConversionProfileKind.ArchiveColor300Lzw] = new(
                 ConversionProfileKind.ArchiveColor300Lzw,
-                Dpi: 300, ColorMode: "Color", CompressionType: "LZW"),
+                Dpi: 300,
+                ColorMode: ColorMode.Color,
+                CompressionType: CompressionType.LZW),
         };
 
     /// <summary>
-    /// Geçerli ColorMode + Compression kombinasyonları.
-    /// G4 yalnızca Binary ile kullanılabilir (faks standardı).
+    /// Geçerli ColorMode + CompressionType kombinasyonları.
+    /// G4 yalnızca Binary ile kullanılabilir (ITU-T T.6 faks standardı).
     /// </summary>
-    private static readonly HashSet<(string ColorMode, string Compression)> ValidCombinations =
+    private static readonly HashSet<(ColorMode, CompressionType)> ValidCombinations =
     [
-        ("Binary", "G4"),
-        ("Binary", "LZW"),
-        ("Gray",   "LZW"),
-        ("Color",  "LZW"),
+        (ColorMode.Binary, CompressionType.G4),
+        (ColorMode.Binary, CompressionType.LZW),
+        (ColorMode.Gray,   CompressionType.LZW),
+        (ColorMode.Color,  CompressionType.LZW),
     ];
 
     private static readonly int[] AllowedDpiValues = [150, 200, 300, 400, 600];
@@ -46,8 +52,8 @@ public class ConversionProfileResolver
     public ConversionProfile Resolve(
         ConversionProfileKind presetKind,
         int? dpiOverride = null,
-        string? colorModeOverride = null,
-        string? compressionOverride = null)
+        ColorMode? colorModeOverride = null,
+        CompressionType? compressionOverride = null)
     {
         if (!Presets.TryGetValue(presetKind, out var preset))
             throw new ArgumentOutOfRangeException(nameof(presetKind),
@@ -56,9 +62,10 @@ public class ConversionProfileResolver
         var dpi = dpiOverride ?? preset.Dpi;
         var colorMode = colorModeOverride ?? preset.ColorMode;
         var compression = compressionOverride ?? preset.CompressionType;
+
         var isCustomized = dpiOverride.HasValue
-                        || colorModeOverride != null
-                        || compressionOverride != null;
+                        || colorModeOverride.HasValue
+                        || compressionOverride.HasValue;
 
         ValidateDpi(dpi);
         ValidateCombination(colorMode, compression);
@@ -84,7 +91,7 @@ public class ConversionProfileResolver
                 nameof(dpi));
     }
 
-    private static void ValidateCombination(string colorMode, string compression)
+    private static void ValidateCombination(ColorMode colorMode, CompressionType compression)
     {
         if (!ValidCombinations.Contains((colorMode, compression)))
             throw new ArgumentException(

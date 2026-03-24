@@ -4,7 +4,7 @@ Windows Service tabanlı, production-oriented TIFF dönüşüm sistemi.
 
 ## Proje Amacı
 
-Farklı formatlardaki dosyaları (DOCX, XLSX, PDF, JPEG, PNG, TIFF) 
+Farklı formatlardaki dosyaları (DOCX, XLSX, PDF, JPEG, PNG, TIFF)
 pipeline mimarisiyle TIFF formatına dönüştürür.
 Dönüşümler asenkron olarak işlenir; kullanıcı JobId alır ve sonucu polling ile sorgular.
 
@@ -12,12 +12,10 @@ Dönüşümler asenkron olarak işlenir; kullanıcı JobId alır ve sonucu polli
 
 ## Mimari
 
-Temiz katmanlı mimari uygulanmıştır. Her katmanın tek bir sorumluluğu vardır.
-
 | Katman | Sorumluluk | Bağımlılık |
 |---|---|---|
 | **Core** | Domain modelleri, enum'lar, interface'ler | Hiçbir şeye bağımlı değil |
-| **Contracts** | API request/response DTO'ları | Hiçbir şeye bağımlı değil |
+| **Contracts** | API request/response DTO'ları | Core |
 | **Application** | İş mantığı: orchestration, profile resolver, handler'lar | Core, Contracts |
 | **Conversion** | Dönüşüm pipeline'ları | Core |
 | **Infrastructure** | In-memory repo, kuyruk, dosya sistemi, process runner | Core |
@@ -26,25 +24,31 @@ Temiz katmanlı mimari uygulanmıştır. Her katmanın tek bir sorumluluğu vard
 
 ---
 
-## Çalışma Modeli (Geliştirme Aşaması)
+## Çalışma Modeli — Geliştirme Aşaması
 
-**API ve Worker aynı host içinde çalışır.**
+**API ve Worker aynı host process içinde çalışır.**
 ```
-OmniConvert.Service.Api  ← Ana entry point (F5 ile başlatılan)
-    ├── JobsController    ← HTTP istekleri
-    └── ConversionWorker  ← BackgroundService olarak kayıtlı
+OmniConvert.Service.Api   ← F5 ile başlatılan tek entry point
+    ├── JobsController     ← HTTP isteklerini karşılar
+    └── ConversionWorker   ← BackgroundService olarak kayıtlı
 ```
 
-In-memory queue ve repository singleton olarak DI'a kayıtlıdır.
-API ve Worker aynı instance'ları paylaşır — ayrı process gerektirmez.
+In-memory queue ve repository **singleton** olarak DI container'a kayıtlıdır.
+API ve Worker aynı instance'ları paylaşır — ayrı process veya IPC gerekmez.
 
-> **Not:** Bu model yalnızca geliştirme aşaması içindir.
-> Production'da Worker ayrı bir host/Windows Service olarak,
-> gerçek bir kuyruk (RabbitMQ, Azure Service Bus) ve veritabanıyla çalışacaktır.
+> **Bu model yalnızca geliştirme aşamasına özgüdür.**
+> Production'da Worker ayrı bir Windows Service veya container olarak,
+> gerçek bir kuyruk (RabbitMQ / Azure Service Bus) ve SQL veritabanıyla çalışacaktır.
 
 ---
 
-## Profil Sistemi
+## Profil Sistemi — Preset + Override
+
+### Type-safe model
+
+Profil sistemi string tabanlı değildir. `ColorMode` ve `CompressionType` 
+Core katmanında enum olarak tanımlıdır; tüm validasyon derleme zamanında ve 
+çalışma zamanında kontrol edilir.
 
 ### Preset'ler
 
@@ -56,16 +60,18 @@ API ve Worker aynı instance'ları paylaşır — ayrı process gerektirmez.
 
 ### Kullanıcı Override Desteği
 
-Kullanıcı sadece preset gönderebilir, ya da preset + override kombinasyonu kullanabilir.
+Sadece preset ya da preset + override kombinasyonu gönderilebilir.
+Enum değerleri JSON'da string olarak yazılır.
 ```json
 // Sadece preset
 { "fileName": "belge.pdf", "profileKind": "ArchiveColor300Lzw" }
 
-// Preset + DPI override
+// DPI override
 { "fileName": "belge.pdf", "profileKind": "ArchiveColor300Lzw", "dpi": 600 }
 
-// Preset + çoklu override
-{ "fileName": "belge.pdf", "profileKind": "OcrGray300Lzw", "dpi": 400, "colorMode": "Binary", "compression": "LZW" }
+// Çoklu override
+{ "fileName": "belge.pdf", "profileKind": "OcrGray300Lzw",
+  "dpi": 400, "colorMode": "Binary", "compression": "LZW" }
 ```
 
 ### Geçerli Kombinasyonlar
@@ -79,8 +85,8 @@ Kullanıcı sadece preset gönderebilir, ya da preset + override kombinasyonu ku
 | Color | G4 | ❌ |
 | Gray | G4 | ❌ |
 
-Geçersiz kombinasyon gönderilirse API `400 Bad Request` döner.
-İzin verilen DPI değerleri: `150, 200, 300, 400, 600`
+Geçersiz kombinasyon → `400 Bad Request`
+İzin verilen DPI: `150, 200, 300, 400, 600`
 
 ---
 
@@ -109,23 +115,28 @@ Swagger: `https://localhost:{port}/swagger`
 
 **Pre-production skeleton — motor entegrasyonları henüz yapılmamıştır.**
 
-- ✅ Temiz katmanlı mimari
-- ✅ Preset + override profil sistemi
-- ✅ Pipeline seçimi ve fallback akışı
-- ✅ Orchestrator: try/catch/finally, workspace cleanup
-- ✅ Stub pipeline'lar (gerçek dönüşüm simüle edilir)
-- ✅ In-memory repository ve kuyruk
-- ⬜ Ghostscript entegrasyonu
-- ⬜ LibreOffice entegrasyonu
-- ⬜ Syncfusion entegrasyonu
-- ⬜ ImageMagick entegrasyonu
-- ⬜ Multipart file upload
-- ⬜ SQL veritabanı
-- ⬜ Gerçek kuyruk altyapısı
+| Alan | Durum |
+|---|---|
+| Temiz katmanlı mimari | ✅ |
+| Type-safe profil sistemi (preset + override) | ✅ |
+| Pipeline seçimi ve fallback akışı | ✅ |
+| Orchestrator: try/catch/finally, workspace cleanup | ✅ |
+| Stub pipeline'lar (gerçek dönüşüm simüle edilir) | ✅ |
+| In-memory repository ve kuyruk | ✅ |
+| Output validasyonu (path + uzantı + file exists) | ✅ |
+| 21 test (unit + integration) | ✅ |
+| Ghostscript entegrasyonu | ⬜ |
+| LibreOffice entegrasyonu | ⬜ |
+| Syncfusion entegrasyonu | ⬜ |
+| ImageMagick entegrasyonu | ⬜ |
+| Multipart file upload | ⬜ |
+| SQL veritabanı | ⬜ |
+| Gerçek kuyruk altyapısı | ⬜ |
 
 ---
 
 ## Sonraki Adım
 
-Gerçek Ghostscript entegrasyonu: `GhostscriptScaledPipeline` içindeki
-`TODO` bloğu, `IExternalProcessRunner` kullanılarak implement edilecek.
+**Ghostscript entegrasyonu:** `GhostscriptScaledPipeline` içindeki `TODO` bloğu,
+`IExternalProcessRunner` kullanılarak implement edilecek.
+Bu entegrasyon tamamlandığında PDF → TIFF dönüşümü gerçek çıktı üretecektir.

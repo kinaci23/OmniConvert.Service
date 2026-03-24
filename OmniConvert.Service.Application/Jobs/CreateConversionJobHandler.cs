@@ -6,7 +6,8 @@ using OmniConvert.Service.Core.Interfaces;
 
 /// <summary>
 /// Yeni bir ConversionJob oluşturur, depoya kaydeder ve kuyruğa ekler.
-/// Profil override'ları bu aşamada saklanır; çözümleme orchestrator tarafından yapılır.
+/// Profil override'ları type-safe enum olarak saklanır;
+/// çözümleme (resolve) orchestrator aşamasında yapılır.
 /// </summary>
 public class CreateConversionJobHandler
 {
@@ -31,8 +32,8 @@ public class CreateConversionJobHandler
         string fileName,
         ConversionProfileKind profileKind,
         int? dpiOverride = null,
-        string? colorModeOverride = null,
-        string? compressionOverride = null,
+        ColorMode? colorModeOverride = null,
+        CompressionType? compressionOverride = null,
         CancellationToken cancellationToken = default)
     {
         var jobId = Guid.NewGuid();

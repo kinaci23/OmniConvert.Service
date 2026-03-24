@@ -9,7 +9,7 @@ public class ConversionJob
     public string OriginalFileName { get; set; } = string.Empty;
     public string StoredInputPath { get; set; } = string.Empty;
 
-    /// <summary>Oluşturma aşamasında belirlenen çıktı yolu. İşlem boyunca değişmez.</summary>
+    /// <summary>Oluşturma aşamasında sabit olarak belirlenen çıktı yolu.</summary>
     public string StoredOutputPath { get; set; } = string.Empty;
 
     public SourceFormat SourceFormat { get; set; }
@@ -17,8 +17,8 @@ public class ConversionJob
 
     // Kullanıcı override alanları — null ise preset değeri kullanılır
     public int? DpiOverride { get; set; }
-    public string? ColorModeOverride { get; set; }
-    public string? CompressionOverride { get; set; }
+    public ColorMode? ColorModeOverride { get; set; }
+    public CompressionType? CompressionOverride { get; set; }
 
     public JobStatus Status { get; set; }
     public PipelineKind? SelectedPipeline { get; set; }

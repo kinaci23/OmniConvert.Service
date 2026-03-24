@@ -16,8 +16,8 @@ public class ConversionProfileResolverTests
         var profile = _resolver.Resolve(ConversionProfileKind.OcrGray300Lzw);
 
         Assert.Equal(300, profile.Dpi);
-        Assert.Equal("Gray", profile.ColorMode);
-        Assert.Equal("LZW", profile.CompressionType);
+        Assert.Equal(ColorMode.Gray, profile.ColorMode);
+        Assert.Equal(CompressionType.LZW, profile.CompressionType);
         Assert.False(profile.IsCustomized);
     }
 
@@ -27,8 +27,8 @@ public class ConversionProfileResolverTests
         var profile = _resolver.Resolve(ConversionProfileKind.OcrBinary300G4);
 
         Assert.Equal(300, profile.Dpi);
-        Assert.Equal("Binary", profile.ColorMode);
-        Assert.Equal("G4", profile.CompressionType);
+        Assert.Equal(ColorMode.Binary, profile.ColorMode);
+        Assert.Equal(CompressionType.G4, profile.CompressionType);
         Assert.False(profile.IsCustomized);
     }
 
@@ -38,15 +38,15 @@ public class ConversionProfileResolverTests
         var profile = _resolver.Resolve(ConversionProfileKind.ArchiveColor300Lzw);
 
         Assert.Equal(300, profile.Dpi);
-        Assert.Equal("Color", profile.ColorMode);
-        Assert.Equal("LZW", profile.CompressionType);
+        Assert.Equal(ColorMode.Color, profile.ColorMode);
+        Assert.Equal(CompressionType.LZW, profile.CompressionType);
         Assert.False(profile.IsCustomized);
     }
 
     // --- Override testleri ---
 
     [Fact]
-    public void DpiOverride_UygulandığındaIsCustomizedTrue_Olmali()
+    public void DpiOverride_IsCustomizedTrue_Olmali()
     {
         var profile = _resolver.Resolve(
             ConversionProfileKind.OcrGray300Lzw, dpiOverride: 600);
@@ -62,21 +62,33 @@ public class ConversionProfileResolverTests
             ConversionProfileKind.OcrGray300Lzw, dpiOverride: 400);
 
         Assert.Equal(400, profile.Dpi);
-        Assert.Equal("Gray", profile.ColorMode);   // preset'ten
-        Assert.Equal("LZW", profile.CompressionType); // preset'ten
+        Assert.Equal(ColorMode.Gray, profile.ColorMode);
+        Assert.Equal(CompressionType.LZW, profile.CompressionType);
+    }
+
+    [Fact]
+    public void BinaryLzwKombinasyonu_Gecerli_Olmali()
+    {
+        var profile = _resolver.Resolve(
+            ConversionProfileKind.OcrBinary300G4,
+            colorModeOverride: ColorMode.Binary,
+            compressionOverride: CompressionType.LZW);
+
+        Assert.Equal(ColorMode.Binary, profile.ColorMode);
+        Assert.Equal(CompressionType.LZW, profile.CompressionType);
+        Assert.True(profile.IsCustomized);
     }
 
     // --- Validasyon testleri ---
 
     [Fact]
-    public void ColorModG4Kombinasyonu_ArgumentException_Firlatmali()
+    public void ColorG4Kombinasyonu_ArgumentException_Firlatmali()
     {
-        // Color + G4 → geçersiz (G4 yalnızca Binary ile)
         Assert.Throws<ArgumentException>(() =>
             _resolver.Resolve(
                 ConversionProfileKind.ArchiveColor300Lzw,
-                colorModeOverride: "Color",
-                compressionOverride: "G4"));
+                colorModeOverride: ColorMode.Color,
+                compressionOverride: CompressionType.G4));
     }
 
     [Fact]
@@ -85,15 +97,16 @@ public class ConversionProfileResolverTests
         Assert.Throws<ArgumentException>(() =>
             _resolver.Resolve(
                 ConversionProfileKind.OcrGray300Lzw,
-                compressionOverride: "G4"));
+                compressionOverride: CompressionType.G4));
     }
 
     [Fact]
-    public void DesteklenmevenDpi_ArgumentException_Firlatmali()
+    public void DesteklenmeyenDpi_ArgumentException_Firlatmali()
     {
         Assert.Throws<ArgumentException>(() =>
             _resolver.Resolve(
-                ConversionProfileKind.OcrGray300Lzw, dpiOverride: 72));
+                ConversionProfileKind.OcrGray300Lzw,
+                dpiOverride: 72));
     }
 
     [Fact]
@@ -101,17 +114,5 @@ public class ConversionProfileResolverTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             _resolver.Resolve((ConversionProfileKind)99));
-    }
-
-    [Fact]
-    public void BinaryLzwKombinasyonu_Gecerli_Olmali()
-    {
-        var profile = _resolver.Resolve(
-            ConversionProfileKind.OcrBinary300G4,
-            colorModeOverride: "Binary",
-            compressionOverride: "LZW");
-
-        Assert.Equal("Binary", profile.ColorMode);
-        Assert.Equal("LZW", profile.CompressionType);
     }
 }

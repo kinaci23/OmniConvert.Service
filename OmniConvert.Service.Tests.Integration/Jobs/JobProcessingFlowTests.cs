@@ -66,7 +66,7 @@ public class JobProcessingFlowTests : IDisposable
     }
 
     [Fact]
-    public async Task PdfIsi_IslendigindeCompleted_Olmali()
+    public async Task PdfIsi_IslendigindeTamamlanmali()
     {
         var createHandler = _sp.GetRequiredService<CreateConversionJobHandler>();
         var processHandler = _sp.GetRequiredService<ProcessConversionJobHandler>();
@@ -94,7 +94,7 @@ public class JobProcessingFlowTests : IDisposable
     }
 
     [Fact]
-    public async Task DocxIsi_LibreOfficePipeline_Kullanmali()
+    public async Task DocxIsi_LibreOfficePipelineKullanmali()
     {
         var createHandler = _sp.GetRequiredService<CreateConversionJobHandler>();
         var processHandler = _sp.GetRequiredService<ProcessConversionJobHandler>();
@@ -113,22 +113,44 @@ public class JobProcessingFlowTests : IDisposable
     public async Task DpiOverrideIle_IsOlusturulunca_OverrideSaklanmali()
     {
         var createHandler = _sp.GetRequiredService<CreateConversionJobHandler>();
-        var queue = _sp.GetRequiredService<IJobQueue>();
         var repo = _sp.GetRequiredService<IJobRepository>();
+        var queue = _sp.GetRequiredService<IJobQueue>();
 
         var job = await createHandler.HandleAsync(
             "arsiv.pdf", ConversionProfileKind.ArchiveColor300Lzw,
             dpiOverride: 600);
 
-        await queue.DequeueAsync(); // kuyruğu temizle
+        await queue.DequeueAsync();
 
         var saved = await repo.GetByIdAsync(job.Id);
         Assert.NotNull(saved);
         Assert.Equal(600, saved!.DpiOverride);
+        Assert.Null(saved.ColorModeOverride);
+        Assert.Null(saved.CompressionOverride);
     }
 
     [Fact]
-    public async Task DesteklenmeFormatIle_IsIslenince_StatusFailed_Olmali()
+    public async Task ColorModeOverrideIle_IsOlusturulunca_OverrideSaklanmali()
+    {
+        var createHandler = _sp.GetRequiredService<CreateConversionJobHandler>();
+        var repo = _sp.GetRequiredService<IJobRepository>();
+        var queue = _sp.GetRequiredService<IJobQueue>();
+
+        var job = await createHandler.HandleAsync(
+            "test.pdf", ConversionProfileKind.OcrGray300Lzw,
+            colorModeOverride: ColorMode.Binary,
+            compressionOverride: CompressionType.LZW);
+
+        await queue.DequeueAsync();
+
+        var saved = await repo.GetByIdAsync(job.Id);
+        Assert.NotNull(saved);
+        Assert.Equal(ColorMode.Binary, saved!.ColorModeOverride);
+        Assert.Equal(CompressionType.LZW, saved.CompressionOverride);
+    }
+
+    [Fact]
+    public async Task DesteklenmeFormatIle_IsIslenince_FailedOlmali()
     {
         var createHandler = _sp.GetRequiredService<CreateConversionJobHandler>();
         var processHandler = _sp.GetRequiredService<ProcessConversionJobHandler>();

@@ -108,7 +108,7 @@ public class ConversionOrchestrator : IConversionOrchestrator
         job.AttemptCount += 1;
         await _jobRepository.SaveAsync(job, cancellationToken);
 
-        // Profil çözümleme — geçersiz kombinasyon burada Validation hatası olarak yakalanır
+        // Profil çözümleme — job'daki preset + type-safe override'lardan final profil üretilir
         ConversionProfile profile;
         try
         {
@@ -123,6 +123,10 @@ public class ConversionOrchestrator : IConversionOrchestrator
             return await FailJobAsync(job, ex.Message,
                 FailureCategory.Validation, null, cancellationToken);
         }
+
+        _logger.LogInformation(
+            "Profil çözümlendi: {Kind} | DPI={Dpi} | ColorMode={ColorMode} | Compression={Compression} | Customized={Customized}",
+            profile.Kind, profile.Dpi, profile.ColorMode, profile.CompressionType, profile.IsCustomized);
 
         // Pipeline seçimi
         PipelineSelectionResult selection;
@@ -140,9 +144,7 @@ public class ConversionOrchestrator : IConversionOrchestrator
         job.FallbackPipeline = selection.Fallback;
         await _jobRepository.SaveAsync(job, cancellationToken);
 
-        // Output yolu oluşturma aşamasında saklandı — workspace dışında olduğu garantili
-        var outputPath = job.StoredOutputPath;
-        if (string.IsNullOrWhiteSpace(outputPath))
+        if (string.IsNullOrWhiteSpace(job.StoredOutputPath))
         {
             return await FailJobAsync(job, "Output path belirlenmemiş.",
                 FailureCategory.Storage, null, cancellationToken);
@@ -151,7 +153,7 @@ public class ConversionOrchestrator : IConversionOrchestrator
         var context = new ConversionContext(
             job.Id,
             job.StoredInputPath,
-            outputPath,
+            job.StoredOutputPath,
             workspace,
             job.SourceFormat,
             profile);
