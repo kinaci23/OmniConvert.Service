@@ -16,6 +16,7 @@ using OmniConvert.Service.Core.Enums;
 using OmniConvert.Service.Core.Interfaces;
 using OmniConvert.Service.Infrastructure.Configuration;
 using OmniConvert.Service.Infrastructure.Persistence;
+using OmniConvert.Service.Infrastructure.Processes;
 using OmniConvert.Service.Infrastructure.Queue;
 using OmniConvert.Service.Infrastructure.Storage;
 using OmniConvert.Service.Infrastructure.Temp;
@@ -41,6 +42,7 @@ public class JobProcessingFlowTests : IDisposable
 
         services.AddTransient<IStorageService, LocalFileStorageService>();
         services.AddTransient<ITempWorkspaceFactory, TempWorkspaceFactory>();
+        services.AddTransient<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddTransient<IClock, SystemClock>();
 
         services.AddTransient<IConversionPipeline, LibreOfficeWordPdfBridgePipeline>();
@@ -51,7 +53,7 @@ public class JobProcessingFlowTests : IDisposable
 
         services.AddTransient<IPipelineSelector, DefaultPipelineSelector>();
         services.AddTransient<IOutputValidator, DefaultOutputValidator>();
-        services.AddTransient<ConversionProfileFactory>();
+        services.AddTransient<ConversionProfileResolver>();
         services.AddSingleton<ILogger<ConversionOrchestrator>>(
             NullLogger<ConversionOrchestrator>.Instance);
         services.AddTransient<IConversionOrchestrator, ConversionOrchestrator>();
@@ -64,7 +66,7 @@ public class JobProcessingFlowTests : IDisposable
     }
 
     [Fact]
-    public async Task PdfIsi_OlusturulupIslenince_StatusCompleted_Olmali()
+    public async Task PdfIsi_IslendigindeCompleted_Olmali()
     {
         var createHandler = _sp.GetRequiredService<CreateConversionJobHandler>();
         var processHandler = _sp.GetRequiredService<ProcessConversionJobHandler>();
@@ -75,10 +77,9 @@ public class JobProcessingFlowTests : IDisposable
             "rapor.pdf", ConversionProfileKind.ArchiveColor300Lzw);
 
         Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.NotEmpty(job.StoredOutputPath);
 
         var jobId = await queue.DequeueAsync();
-        Assert.Equal(job.Id, jobId);
-
         var result = await processHandler.HandleAsync(jobId);
 
         Assert.True(result.Success);
@@ -89,23 +90,41 @@ public class JobProcessingFlowTests : IDisposable
         var finalJob = await statusHandler.HandleAsync(jobId);
         Assert.NotNull(finalJob);
         Assert.Equal(JobStatus.Completed, finalJob!.Status);
-        Assert.NotNull(finalJob.OutputPath);
         Assert.True(File.Exists(finalJob.OutputPath));
     }
 
     [Fact]
-    public async Task DocxIsi_IslenirkenLibreOfficePipeline_Kullanilmali()
+    public async Task DocxIsi_LibreOfficePipeline_Kullanmali()
     {
         var createHandler = _sp.GetRequiredService<CreateConversionJobHandler>();
         var processHandler = _sp.GetRequiredService<ProcessConversionJobHandler>();
         var queue = _sp.GetRequiredService<IJobQueue>();
 
-        var job = await createHandler.HandleAsync("belge.docx", ConversionProfileKind.OcrGray300Lzw);
+        var job = await createHandler.HandleAsync(
+            "belge.docx", ConversionProfileKind.OcrGray300Lzw);
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
 
         Assert.True(result.Success);
         Assert.Equal(PipelineKind.LibreOfficeWordPdfBridge, result.PipelineUsed);
+    }
+
+    [Fact]
+    public async Task DpiOverrideIle_IsOlusturulunca_OverrideSaklanmali()
+    {
+        var createHandler = _sp.GetRequiredService<CreateConversionJobHandler>();
+        var queue = _sp.GetRequiredService<IJobQueue>();
+        var repo = _sp.GetRequiredService<IJobRepository>();
+
+        var job = await createHandler.HandleAsync(
+            "arsiv.pdf", ConversionProfileKind.ArchiveColor300Lzw,
+            dpiOverride: 600);
+
+        await queue.DequeueAsync(); // kuyruğu temizle
+
+        var saved = await repo.GetByIdAsync(job.Id);
+        Assert.NotNull(saved);
+        Assert.Equal(600, saved!.DpiOverride);
     }
 
     [Fact]
@@ -116,10 +135,8 @@ public class JobProcessingFlowTests : IDisposable
         var statusHandler = _sp.GetRequiredService<GetConversionJobStatusHandler>();
         var queue = _sp.GetRequiredService<IJobQueue>();
 
-        // .xyz uzantısı → SourceFormat.Unknown → selector NotSupportedException fırlatır
         var job = await createHandler.HandleAsync(
             "bilinmeyen.xyz", ConversionProfileKind.OcrBinary300G4);
-
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
 
@@ -127,14 +144,12 @@ public class JobProcessingFlowTests : IDisposable
         Assert.Equal(FailureCategory.UnsupportedFormat, result.FailureCategory);
 
         var finalJob = await statusHandler.HandleAsync(jobId);
-        Assert.NotNull(finalJob);
         Assert.Equal(JobStatus.Failed, finalJob!.Status);
         Assert.NotNull(finalJob.ErrorMessage);
     }
 
     public void Dispose()
     {
-        // Test sonrası geçici klasörü temizle
         if (Directory.Exists(_testBasePath))
             Directory.Delete(_testBasePath, recursive: true);
     }

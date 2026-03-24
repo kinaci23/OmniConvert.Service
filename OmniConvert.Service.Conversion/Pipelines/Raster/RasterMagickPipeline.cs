@@ -6,6 +6,9 @@ using OmniConvert.Service.Core.ValueObjects;
 
 public class RasterMagickPipeline : IConversionPipeline
 {
+    // TODO: ImageMagick .NET SDK bağımlılığı buraya enjekte edilecek
+    // private readonly IMagickImageFactory _magickFactory;
+
     public PipelineKind Kind => PipelineKind.RasterMagick;
 
     public bool CanHandle(SourceFormat format)
@@ -15,6 +18,8 @@ public class RasterMagickPipeline : IConversionPipeline
         ConversionContext context,
         CancellationToken cancellationToken = default)
     {
+        // TODO: ImageMagick ile raster → TIFF dönüşümü
+        // Profile'dan DPI, ColorMode, Compression bilgisi kullanılacak
         await Task.Delay(50, cancellationToken);
         await WriteStubOutputAsync(context.OutputFilePath, cancellationToken);
         return new PipelineExecutionResult(Success: true, OutputPath: context.OutputFilePath);

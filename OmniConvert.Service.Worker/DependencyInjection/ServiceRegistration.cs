@@ -20,41 +20,43 @@ using OmniConvert.Service.Infrastructure.Storage;
 using OmniConvert.Service.Infrastructure.Temp;
 using OmniConvert.Service.Infrastructure.Time;
 
+/// <summary>
+/// Standalone worker modu için servis kaydı.
+/// Geliştirme aşamasında ana entry point API'dir; Worker orada BackgroundService olarak çalışır.
+/// Bu kayıt, ileride Worker'ın ayrı bir host'ta çalıştırılması gerektiğinde kullanılır.
+/// </summary>
 public static class ServiceRegistration
 {
     public static IServiceCollection AddWorkerServices(
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Konfigürasyon bağlama
-        services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
-        services.Configure<PipelineOptions>(configuration.GetSection(PipelineOptions.SectionName));
-        services.Configure<WorkerOptions>(configuration.GetSection(WorkerOptions.SectionName));
+        services.Configure<StorageOptions>(
+            configuration.GetSection(StorageOptions.SectionName));
+        services.Configure<PipelineOptions>(
+            configuration.GetSection(PipelineOptions.SectionName));
+        services.Configure<WorkerOptions>(
+            configuration.GetSection(WorkerOptions.SectionName));
 
-        // Singleton: birden fazla worker aynı veriyi paylaşır
         services.AddSingleton<IJobRepository, InMemoryJobRepository>();
         services.AddSingleton<IJobQueue, InMemoryJobQueue>();
 
-        // Transient altyapı servisleri
         services.AddTransient<IStorageService, LocalFileStorageService>();
         services.AddTransient<ITempWorkspaceFactory, TempWorkspaceFactory>();
         services.AddTransient<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddTransient<IClock, SystemClock>();
 
-        // Pipeline'lar
         services.AddTransient<IConversionPipeline, LibreOfficeWordPdfBridgePipeline>();
         services.AddTransient<IConversionPipeline, SyncfusionExcelRenderMergePipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeExcelPdfBridgePipeline>();
         services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, RasterMagickPipeline>();
 
-        // Uygulama servisleri
         services.AddTransient<IPipelineSelector, DefaultPipelineSelector>();
         services.AddTransient<IOutputValidator, DefaultOutputValidator>();
-        services.AddTransient<ConversionProfileFactory>();
+        services.AddTransient<ConversionProfileResolver>();
         services.AddTransient<IConversionOrchestrator, ConversionOrchestrator>();
 
-        // Handler'lar
         services.AddTransient<CreateConversionJobHandler>();
         services.AddTransient<ProcessConversionJobHandler>();
         services.AddTransient<GetConversionJobStatusHandler>();

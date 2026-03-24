@@ -6,6 +6,9 @@ using OmniConvert.Service.Core.ValueObjects;
 
 public class SyncfusionExcelRenderMergePipeline : IConversionPipeline
 {
+    // TODO: Syncfusion SDK bağımlılığı buraya enjekte edilecek
+    // private readonly ExcelEngine _excelEngine;
+
     public PipelineKind Kind => PipelineKind.SyncfusionExcelRenderMerge;
 
     public bool CanHandle(SourceFormat format) => format == SourceFormat.Xlsx;
@@ -14,6 +17,8 @@ public class SyncfusionExcelRenderMergePipeline : IConversionPipeline
         ConversionContext context,
         CancellationToken cancellationToken = default)
     {
+        // TODO: Syncfusion XlsIO ile Excel → TIFF dönüşümü
+        // Her sayfayı ayrı TIFF olarak render et, sonra birleştir
         await Task.Delay(50, cancellationToken);
         await WriteStubOutputAsync(context.OutputFilePath, cancellationToken);
         return new PipelineExecutionResult(Success: true, OutputPath: context.OutputFilePath);

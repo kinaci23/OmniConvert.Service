@@ -6,6 +6,7 @@ using OmniConvert.Service.Core.Interfaces;
 
 /// <summary>
 /// Yeni bir ConversionJob oluşturur, depoya kaydeder ve kuyruğa ekler.
+/// Profil override'ları bu aşamada saklanır; çözümleme orchestrator tarafından yapılır.
 /// </summary>
 public class CreateConversionJobHandler
 {
@@ -29,6 +30,9 @@ public class CreateConversionJobHandler
     public async Task<ConversionJob> HandleAsync(
         string fileName,
         ConversionProfileKind profileKind,
+        int? dpiOverride = null,
+        string? colorModeOverride = null,
+        string? compressionOverride = null,
         CancellationToken cancellationToken = default)
     {
         var jobId = Guid.NewGuid();
@@ -41,8 +45,12 @@ public class CreateConversionJobHandler
             Id = jobId,
             OriginalFileName = fileName,
             StoredInputPath = paths.InputPath,
+            StoredOutputPath = paths.OutputPath,
             SourceFormat = sourceFormat,
             ProfileKind = profileKind,
+            DpiOverride = dpiOverride,
+            ColorModeOverride = colorModeOverride,
+            CompressionOverride = compressionOverride,
             Status = JobStatus.Created,
             CreatedAtUtc = _clock.UtcNow
         };

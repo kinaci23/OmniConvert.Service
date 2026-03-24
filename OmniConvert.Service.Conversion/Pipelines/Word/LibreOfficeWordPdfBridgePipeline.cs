@@ -6,6 +6,11 @@ using OmniConvert.Service.Core.ValueObjects;
 
 public class LibreOfficeWordPdfBridgePipeline : IConversionPipeline
 {
+    private readonly IExternalProcessRunner _processRunner;
+
+    public LibreOfficeWordPdfBridgePipeline(IExternalProcessRunner processRunner)
+        => _processRunner = processRunner;
+
     public PipelineKind Kind => PipelineKind.LibreOfficeWordPdfBridge;
 
     public bool CanHandle(SourceFormat format) => format == SourceFormat.Docx;
@@ -14,6 +19,14 @@ public class LibreOfficeWordPdfBridgePipeline : IConversionPipeline
         ConversionContext context,
         CancellationToken cancellationToken = default)
     {
+        // TODO: LibreOffice entegrasyonu
+        // Adım 1: DOCX → PDF (LibreOffice)
+        // Adım 2: PDF → TIFF (Ghostscript veya ImageMagick)
+        // var pdfPath = Path.ChangeExtension(context.OutputFilePath, ".pdf");
+        // await _processRunner.RunAsync("soffice",
+        //     $"--headless --convert-to pdf \"{context.InputFilePath}\" --outdir \"{context.WorkspacePath}\"",
+        //     cancellationToken);
+
         await Task.Delay(50, cancellationToken);
         await WriteStubOutputAsync(context.OutputFilePath, cancellationToken);
         return new PipelineExecutionResult(Success: true, OutputPath: context.OutputFilePath);

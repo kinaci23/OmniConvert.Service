@@ -26,28 +26,38 @@ public static class ServiceRegistration
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
-        services.Configure<PipelineOptions>(configuration.GetSection(PipelineOptions.SectionName));
+        // Konfigürasyon
+        services.Configure<StorageOptions>(
+            configuration.GetSection(StorageOptions.SectionName));
+        services.Configure<PipelineOptions>(
+            configuration.GetSection(PipelineOptions.SectionName));
+        services.Configure<WorkerOptions>(
+            configuration.GetSection(WorkerOptions.SectionName));
 
+        // Singleton: API ve Worker aynı process içinde bu instance'ları paylaşır
         services.AddSingleton<IJobRepository, InMemoryJobRepository>();
         services.AddSingleton<IJobQueue, InMemoryJobQueue>();
 
+        // Altyapı servisleri
         services.AddTransient<IStorageService, LocalFileStorageService>();
         services.AddTransient<ITempWorkspaceFactory, TempWorkspaceFactory>();
         services.AddTransient<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddTransient<IClock, SystemClock>();
 
+        // Pipeline'lar
         services.AddTransient<IConversionPipeline, LibreOfficeWordPdfBridgePipeline>();
         services.AddTransient<IConversionPipeline, SyncfusionExcelRenderMergePipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeExcelPdfBridgePipeline>();
         services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, RasterMagickPipeline>();
 
+        // Uygulama servisleri
         services.AddTransient<IPipelineSelector, DefaultPipelineSelector>();
         services.AddTransient<IOutputValidator, DefaultOutputValidator>();
-        services.AddTransient<ConversionProfileFactory>();
+        services.AddTransient<ConversionProfileResolver>();
         services.AddTransient<IConversionOrchestrator, ConversionOrchestrator>();
 
+        // Handler'lar
         services.AddTransient<CreateConversionJobHandler>();
         services.AddTransient<ProcessConversionJobHandler>();
         services.AddTransient<GetConversionJobStatusHandler>();

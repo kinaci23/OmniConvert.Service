@@ -1,7 +1,6 @@
 ﻿namespace OmniConvert.Service.Application.Orchestration;
 
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using OmniConvert.Service.Application.Profiles;
 using OmniConvert.Service.Core.Entities;
 using OmniConvert.Service.Core.Enums;
@@ -14,7 +13,7 @@ public class ConversionOrchestrator : IConversionOrchestrator
     private readonly IPipelineSelector _pipelineSelector;
     private readonly IEnumerable<IConversionPipeline> _pipelines;
     private readonly IOutputValidator _outputValidator;
-    private readonly ConversionProfileFactory _profileFactory;
+    private readonly ConversionProfileResolver _profileResolver;
     private readonly ITempWorkspaceFactory _workspaceFactory;
     private readonly IClock _clock;
     private readonly ILogger<ConversionOrchestrator> _logger;
@@ -24,7 +23,7 @@ public class ConversionOrchestrator : IConversionOrchestrator
         IPipelineSelector pipelineSelector,
         IEnumerable<IConversionPipeline> pipelines,
         IOutputValidator outputValidator,
-        ConversionProfileFactory profileFactory,
+        ConversionProfileResolver profileResolver,
         ITempWorkspaceFactory workspaceFactory,
         IClock clock,
         ILogger<ConversionOrchestrator> logger)
@@ -33,7 +32,7 @@ public class ConversionOrchestrator : IConversionOrchestrator
         _pipelineSelector = pipelineSelector;
         _pipelines = pipelines;
         _outputValidator = outputValidator;
-        _profileFactory = profileFactory;
+        _profileResolver = profileResolver;
         _workspaceFactory = workspaceFactory;
         _clock = clock;
         _logger = logger;
@@ -76,7 +75,6 @@ public class ConversionOrchestrator : IConversionOrchestrator
             job.FailureCategory = FailureCategory.Unknown;
             job.CompletedAtUtc = _clock.UtcNow;
 
-            // Kayıt garanti edilmeli — orijinal token iptal olmuş olabilir
             try { await _jobRepository.SaveAsync(job, CancellationToken.None); }
             catch (Exception saveEx)
             {
@@ -94,7 +92,6 @@ public class ConversionOrchestrator : IConversionOrchestrator
         }
         finally
         {
-            // Output dosyası workspace dışında olduğu için güvenle temizlenebilir
             _workspaceFactory.CleanupWorkspace(jobId);
         }
     }
@@ -111,7 +108,23 @@ public class ConversionOrchestrator : IConversionOrchestrator
         job.AttemptCount += 1;
         await _jobRepository.SaveAsync(job, cancellationToken);
 
-        // Pipeline seçimi — desteklenmeyen format burada yakalanır
+        // Profil çözümleme — geçersiz kombinasyon burada Validation hatası olarak yakalanır
+        ConversionProfile profile;
+        try
+        {
+            profile = _profileResolver.Resolve(
+                job.ProfileKind,
+                job.DpiOverride,
+                job.ColorModeOverride,
+                job.CompressionOverride);
+        }
+        catch (ArgumentException ex)
+        {
+            return await FailJobAsync(job, ex.Message,
+                FailureCategory.Validation, null, cancellationToken);
+        }
+
+        // Pipeline seçimi
         PipelineSelectionResult selection;
         try
         {
@@ -127,13 +140,13 @@ public class ConversionOrchestrator : IConversionOrchestrator
         job.FallbackPipeline = selection.Fallback;
         await _jobRepository.SaveAsync(job, cancellationToken);
 
-        var profile = _profileFactory.GetProfile(job.ProfileKind);
-
-        // Output yolu workspace dışında — finally'deki cleanup çıktıyı silmez
-        var inputDir = Path.GetDirectoryName(job.StoredInputPath) ?? string.Empty;
-        var jobDir = Path.GetDirectoryName(inputDir) ?? string.Empty;
-        var outputPath = Path.Combine(jobDir, "output",
-            $"{Path.GetFileNameWithoutExtension(job.OriginalFileName)}.tif");
+        // Output yolu oluşturma aşamasında saklandı — workspace dışında olduğu garantili
+        var outputPath = job.StoredOutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            return await FailJobAsync(job, "Output path belirlenmemiş.",
+                FailureCategory.Storage, null, cancellationToken);
+        }
 
         var context = new ConversionContext(
             job.Id,
@@ -159,7 +172,7 @@ public class ConversionOrchestrator : IConversionOrchestrator
             return await CompleteJobAsync(job, primaryResult.OutputPath!, false,
                 selection.Primary, cancellationToken);
 
-        // --- Fallback pipeline (sadece tanımlıysa) ---
+        // --- Fallback pipeline ---
         if (selection.Fallback.HasValue)
         {
             _logger.LogWarning("Birincil başarısız, fallback: {Fallback} | Job: {JobId}",
@@ -192,19 +205,15 @@ public class ConversionOrchestrator : IConversionOrchestrator
     private IConversionPipeline? ResolvePipeline(PipelineKind kind)
         => _pipelines.FirstOrDefault(p => p.Kind == kind);
 
-    private async Task<bool> IsOutputValidAsync(string? outputPath, CancellationToken cancellationToken)
+    private async Task<bool> IsOutputValidAsync(string? outputPath, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(outputPath)) return false;
-        return await _outputValidator.ValidateAsync(
-            new OutputValidationContext(outputPath), cancellationToken);
+        return await _outputValidator.ValidateAsync(new OutputValidationContext(outputPath), ct);
     }
 
     private async Task<ConversionResult> CompleteJobAsync(
-        ConversionJob job,
-        string outputPath,
-        bool usedFallback,
-        PipelineKind pipelineUsed,
-        CancellationToken cancellationToken)
+        ConversionJob job, string outputPath, bool usedFallback,
+        PipelineKind pipelineUsed, CancellationToken cancellationToken)
     {
         job.Status = usedFallback ? JobStatus.CompletedWithFallback : JobStatus.Completed;
         job.OutputPath = outputPath;
@@ -212,7 +221,8 @@ public class ConversionOrchestrator : IConversionOrchestrator
         job.CompletedAtUtc = _clock.UtcNow;
         await _jobRepository.SaveAsync(job, cancellationToken);
 
-        _logger.LogInformation("İş tamamlandı: {JobId} | Pipeline: {Pipeline} | Fallback: {Fallback}",
+        _logger.LogInformation(
+            "İş tamamlandı: {JobId} | Pipeline: {Pipeline} | Fallback: {Fallback}",
             job.Id, pipelineUsed, usedFallback);
 
         return new ConversionResult
@@ -226,11 +236,8 @@ public class ConversionOrchestrator : IConversionOrchestrator
     }
 
     private async Task<ConversionResult> FailJobAsync(
-        ConversionJob job,
-        string errorMessage,
-        FailureCategory failureCategory,
-        PipelineKind? pipelineUsed,
-        CancellationToken cancellationToken)
+        ConversionJob job, string errorMessage, FailureCategory failureCategory,
+        PipelineKind? pipelineUsed, CancellationToken cancellationToken)
     {
         job.Status = JobStatus.Failed;
         job.ErrorMessage = errorMessage;
@@ -238,7 +245,8 @@ public class ConversionOrchestrator : IConversionOrchestrator
         job.CompletedAtUtc = _clock.UtcNow;
         await _jobRepository.SaveAsync(job, cancellationToken);
 
-        _logger.LogWarning("İş başarısız: {JobId} | Kategori: {Category} | Mesaj: {Message}",
+        _logger.LogWarning(
+            "İş başarısız: {JobId} | Kategori: {Category} | Mesaj: {Message}",
             job.Id, failureCategory, errorMessage);
 
         return new ConversionResult
