@@ -7,6 +7,7 @@ using OmniConvert.Service.Application.Orchestration;
 using OmniConvert.Service.Application.Profiles;
 using OmniConvert.Service.Application.Selection;
 using OmniConvert.Service.Application.Validation;
+using OmniConvert.Service.Conversion.Configuration;
 using OmniConvert.Service.Conversion.Pipelines.Excel;
 using OmniConvert.Service.Conversion.Pipelines.Pdf;
 using OmniConvert.Service.Conversion.Pipelines.Raster;
@@ -33,12 +34,14 @@ public static class ServiceRegistration
             configuration.GetSection(PipelineOptions.SectionName));
         services.Configure<WorkerOptions>(
             configuration.GetSection(WorkerOptions.SectionName));
+        services.Configure<GhostscriptOptions>(
+            configuration.GetSection(GhostscriptOptions.SectionName));
 
-        // Singleton: API ve Worker aynı process içinde bu instance'ları paylaşır
+        // Singleton: API ve Worker aynı process içinde paylaşılır
         services.AddSingleton<IJobRepository, InMemoryJobRepository>();
         services.AddSingleton<IJobQueue, InMemoryJobQueue>();
 
-        // Altyapı servisleri
+        // Altyapı
         services.AddTransient<IStorageService, LocalFileStorageService>();
         services.AddTransient<ITempWorkspaceFactory, TempWorkspaceFactory>();
         services.AddTransient<IExternalProcessRunner, ExternalProcessRunner>();

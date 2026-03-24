@@ -7,6 +7,7 @@ using OmniConvert.Service.Application.Orchestration;
 using OmniConvert.Service.Application.Profiles;
 using OmniConvert.Service.Application.Selection;
 using OmniConvert.Service.Application.Validation;
+using OmniConvert.Service.Conversion.Configuration;
 using OmniConvert.Service.Conversion.Pipelines.Excel;
 using OmniConvert.Service.Conversion.Pipelines.Pdf;
 using OmniConvert.Service.Conversion.Pipelines.Raster;
@@ -22,8 +23,7 @@ using OmniConvert.Service.Infrastructure.Time;
 
 /// <summary>
 /// Standalone worker modu için servis kaydı.
-/// Geliştirme aşamasında ana entry point API'dir; Worker orada BackgroundService olarak çalışır.
-/// Bu kayıt, ileride Worker'ın ayrı bir host'ta çalıştırılması gerektiğinde kullanılır.
+/// Geliştirme aşamasında ana entry point API'dir.
 /// </summary>
 public static class ServiceRegistration
 {
@@ -37,6 +37,8 @@ public static class ServiceRegistration
             configuration.GetSection(PipelineOptions.SectionName));
         services.Configure<WorkerOptions>(
             configuration.GetSection(WorkerOptions.SectionName));
+        services.Configure<GhostscriptOptions>(
+            configuration.GetSection(GhostscriptOptions.SectionName));
 
         services.AddSingleton<IJobRepository, InMemoryJobRepository>();
         services.AddSingleton<IJobQueue, InMemoryJobQueue>();

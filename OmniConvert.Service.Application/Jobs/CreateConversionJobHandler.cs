@@ -4,11 +4,6 @@ using OmniConvert.Service.Core.Entities;
 using OmniConvert.Service.Core.Enums;
 using OmniConvert.Service.Core.Interfaces;
 
-/// <summary>
-/// Yeni bir ConversionJob oluşturur, depoya kaydeder ve kuyruğa ekler.
-/// Profil override'ları type-safe enum olarak saklanır;
-/// çözümleme (resolve) orchestrator aşamasında yapılır.
-/// </summary>
 public class CreateConversionJobHandler
 {
     private readonly IJobRepository _jobRepository;
@@ -34,12 +29,18 @@ public class CreateConversionJobHandler
         int? dpiOverride = null,
         ColorMode? colorModeOverride = null,
         CompressionType? compressionOverride = null,
+        string? sourceFilePath = null,
         CancellationToken cancellationToken = default)
     {
         var jobId = Guid.NewGuid();
         var sourceFormat = DetectFormat(fileName);
         var paths = await _storageService.PrepareJobStorageAsync(
                                jobId, fileName, cancellationToken);
+
+        // Geliştirme ortamı: gerçek dosya varsa input klasörüne kopyala
+        // Multipart upload implementasyonunda bu blok kaldırılacak
+        if (!string.IsNullOrEmpty(sourceFilePath) && File.Exists(sourceFilePath))
+            File.Copy(sourceFilePath, paths.InputPath, overwrite: true);
 
         var job = new ConversionJob
         {
@@ -66,10 +67,6 @@ public class CreateConversionJobHandler
         return job;
     }
 
-    /// <summary>
-    /// Dosya uzantısını domain format ailesine eşler.
-    /// jpg/jpeg → Jpeg, tif/tiff → Tiff olarak normalize edilir.
-    /// </summary>
     private static SourceFormat DetectFormat(string fileName)
     {
         var ext = Path.GetExtension(fileName)?.TrimStart('.').ToLowerInvariant();

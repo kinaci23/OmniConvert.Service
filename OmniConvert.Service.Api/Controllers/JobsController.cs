@@ -24,11 +24,6 @@ public class JobsController : ControllerBase
         _profileResolver = profileResolver;
     }
 
-    /// <summary>
-    /// Yeni bir dönüşüm işi oluşturur ve kuyruğa ekler.
-    /// Enum değerleri JSON'da string olarak gönderilir.
-    /// Örnek: "profileKind": "ArchiveColor300Lzw", "colorMode": "Gray"
-    /// </summary>
     [HttpPost]
     public async Task<IActionResult> CreateJob(
         [FromBody] CreateConversionJobRequest request,
@@ -37,7 +32,6 @@ public class JobsController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.FileName))
             return BadRequest(new ErrorResponse("FileName zorunludur."));
 
-        // Erken validasyon — geçersiz kombinasyon kuyruğa alınmadan reddedilir
         try
         {
             _profileResolver.Resolve(
@@ -57,13 +51,13 @@ public class JobsController : ControllerBase
             request.Dpi,
             request.ColorMode,
             request.Compression,
+            request.SourceFilePath,
             cancellationToken);
 
         return Accepted(new CreateConversionJobResponse(
             job.Id, job.Status.ToString(), job.OriginalFileName));
     }
 
-    /// <summary>Belirli bir işin güncel durumunu döndürür.</summary>
     [HttpGet("{jobId:guid}")]
     public async Task<IActionResult> GetJob(
         Guid jobId,
