@@ -1,17 +1,13 @@
 ﻿namespace OmniConvert.Service.Application.Orchestration;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OmniConvert.Service.Application.Profiles;
 using OmniConvert.Service.Core.Entities;
 using OmniConvert.Service.Core.Enums;
 using OmniConvert.Service.Core.Interfaces;
 using OmniConvert.Service.Core.ValueObjects;
 
-/// <summary>
-/// Bir conversion işinin tüm akışını yönetir:
-/// iş yükleme → durum güncelleme → pipeline seçimi → çalıştırma →
-/// doğrulama → gerekirse fallback → sonuç kaydetme.
-/// </summary>
 public class ConversionOrchestrator : IConversionOrchestrator
 {
     private readonly IJobRepository _jobRepository;
@@ -51,14 +47,71 @@ public class ConversionOrchestrator : IConversionOrchestrator
         if (job is null)
         {
             _logger.LogError("İş bulunamadı: {JobId}", jobId);
-            return StaticFail(jobId, "İş bulunamadı.", FailureCategory.Unknown);
+            return new ConversionResult
+            {
+                JobId = jobId,
+                Success = false,
+                ErrorMessage = "İş bulunamadı.",
+                FailureCategory = FailureCategory.Unknown
+            };
         }
 
+        var workspace = _workspaceFactory.CreateWorkspace(jobId);
+
+        try
+        {
+            return await RunAsync(job, workspace, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("İş iptal edildi: {JobId}", jobId);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Beklenmeyen hata. Job: {JobId}", jobId);
+
+            job.Status = JobStatus.Failed;
+            job.ErrorMessage = ex.Message;
+            job.FailureCategory = FailureCategory.Unknown;
+            job.CompletedAtUtc = _clock.UtcNow;
+
+            // Kayıt garanti edilmeli — orijinal token iptal olmuş olabilir
+            try { await _jobRepository.SaveAsync(job, CancellationToken.None); }
+            catch (Exception saveEx)
+            {
+                _logger.LogError(saveEx, "Hata sonrası job kaydedilemedi: {JobId}", jobId);
+            }
+
+            return new ConversionResult
+            {
+                JobId = job.Id,
+                Success = false,
+                ErrorMessage = ex.Message,
+                FailureCategory = FailureCategory.Unknown,
+                PipelineUsed = job.SelectedPipeline
+            };
+        }
+        finally
+        {
+            // Output dosyası workspace dışında olduğu için güvenle temizlenebilir
+            _workspaceFactory.CleanupWorkspace(jobId);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+
+    private async Task<ConversionResult> RunAsync(
+        ConversionJob job,
+        string workspace,
+        CancellationToken cancellationToken)
+    {
         job.Status = JobStatus.Processing;
         job.StartedAtUtc = _clock.UtcNow;
         job.AttemptCount += 1;
         await _jobRepository.SaveAsync(job, cancellationToken);
 
+        // Pipeline seçimi — desteklenmeyen format burada yakalanır
         PipelineSelectionResult selection;
         try
         {
@@ -66,7 +119,8 @@ public class ConversionOrchestrator : IConversionOrchestrator
         }
         catch (NotSupportedException ex)
         {
-            return await FailJobAsync(job, ex.Message, FailureCategory.UnsupportedFormat, PipelineKind.None, cancellationToken);
+            return await FailJobAsync(job, ex.Message,
+                FailureCategory.UnsupportedFormat, null, cancellationToken);
         }
 
         job.SelectedPipeline = selection.Primary;
@@ -74,8 +128,12 @@ public class ConversionOrchestrator : IConversionOrchestrator
         await _jobRepository.SaveAsync(job, cancellationToken);
 
         var profile = _profileFactory.GetProfile(job.ProfileKind);
-        var workspace = _workspaceFactory.CreateWorkspace(jobId);
-        var outputPath = Path.Combine(workspace, $"{jobId}.tif");
+
+        // Output yolu workspace dışında — finally'deki cleanup çıktıyı silmez
+        var inputDir = Path.GetDirectoryName(job.StoredInputPath) ?? string.Empty;
+        var jobDir = Path.GetDirectoryName(inputDir) ?? string.Empty;
+        var outputPath = Path.Combine(jobDir, "output",
+            $"{Path.GetFileNameWithoutExtension(job.OriginalFileName)}.tif");
 
         var context = new ConversionContext(
             job.Id,
@@ -88,26 +146,24 @@ public class ConversionOrchestrator : IConversionOrchestrator
         // --- Birincil pipeline ---
         var primaryPipeline = ResolvePipeline(selection.Primary);
         if (primaryPipeline is null)
-        {
             return await FailJobAsync(job,
                 $"Pipeline kayıtlı değil: {selection.Primary}",
                 FailureCategory.Unknown, selection.Primary, cancellationToken);
-        }
 
-        _logger.LogInformation("Birincil pipeline çalıştırılıyor: {Pipeline} | Job: {JobId}",
-            selection.Primary, jobId);
+        _logger.LogInformation("Birincil pipeline: {Pipeline} | Job: {JobId}",
+            selection.Primary, job.Id);
 
         var primaryResult = await primaryPipeline.ExecuteAsync(context, cancellationToken);
 
         if (primaryResult.Success && await IsOutputValidAsync(primaryResult.OutputPath, cancellationToken))
-            return await CompleteJobAsync(job, primaryResult.OutputPath!, usedFallback: false,
+            return await CompleteJobAsync(job, primaryResult.OutputPath!, false,
                 selection.Primary, cancellationToken);
 
-        // --- Yedek pipeline (yalnızca tanımlıysa) ---
+        // --- Fallback pipeline (sadece tanımlıysa) ---
         if (selection.Fallback.HasValue)
         {
-            _logger.LogWarning("Birincil pipeline başarısız. Fallback deneniyor: {Fallback} | Job: {JobId}",
-                selection.Fallback.Value, jobId);
+            _logger.LogWarning("Birincil başarısız, fallback: {Fallback} | Job: {JobId}",
+                selection.Fallback.Value, job.Id);
 
             var fallbackPipeline = ResolvePipeline(selection.Fallback.Value);
             if (fallbackPipeline is not null)
@@ -115,18 +171,20 @@ public class ConversionOrchestrator : IConversionOrchestrator
                 var fallbackResult = await fallbackPipeline.ExecuteAsync(context, cancellationToken);
 
                 if (fallbackResult.Success && await IsOutputValidAsync(fallbackResult.OutputPath, cancellationToken))
-                    return await CompleteJobAsync(job, fallbackResult.OutputPath!, usedFallback: true,
+                    return await CompleteJobAsync(job, fallbackResult.OutputPath!, true,
                         selection.Fallback.Value, cancellationToken);
 
                 return await FailJobAsync(job,
-                    fallbackResult.ErrorMessage ?? "Fallback pipeline başarısız.",
-                    fallbackResult.FailureCategory, selection.Fallback.Value, cancellationToken);
+                    fallbackResult.ErrorMessage ?? "Fallback başarısız.",
+                    ToFailureCategory(fallbackResult.FailureCategory),
+                    selection.Fallback.Value, cancellationToken);
             }
         }
 
         return await FailJobAsync(job,
             primaryResult.ErrorMessage ?? "Birincil pipeline başarısız.",
-            primaryResult.FailureCategory, selection.Primary, cancellationToken);
+            ToFailureCategory(primaryResult.FailureCategory),
+            selection.Primary, cancellationToken);
     }
 
     // -------------------------------------------------------------------------
@@ -137,7 +195,8 @@ public class ConversionOrchestrator : IConversionOrchestrator
     private async Task<bool> IsOutputValidAsync(string? outputPath, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(outputPath)) return false;
-        return await _outputValidator.ValidateAsync(new OutputValidationContext(outputPath), cancellationToken);
+        return await _outputValidator.ValidateAsync(
+            new OutputValidationContext(outputPath), cancellationToken);
     }
 
     private async Task<ConversionResult> CompleteJobAsync(
@@ -153,6 +212,9 @@ public class ConversionOrchestrator : IConversionOrchestrator
         job.CompletedAtUtc = _clock.UtcNow;
         await _jobRepository.SaveAsync(job, cancellationToken);
 
+        _logger.LogInformation("İş tamamlandı: {JobId} | Pipeline: {Pipeline} | Fallback: {Fallback}",
+            job.Id, pipelineUsed, usedFallback);
+
         return new ConversionResult
         {
             JobId = job.Id,
@@ -167,7 +229,7 @@ public class ConversionOrchestrator : IConversionOrchestrator
         ConversionJob job,
         string errorMessage,
         FailureCategory failureCategory,
-        PipelineKind pipelineUsed,
+        PipelineKind? pipelineUsed,
         CancellationToken cancellationToken)
     {
         job.Status = JobStatus.Failed;
@@ -175,6 +237,9 @@ public class ConversionOrchestrator : IConversionOrchestrator
         job.FailureCategory = failureCategory;
         job.CompletedAtUtc = _clock.UtcNow;
         await _jobRepository.SaveAsync(job, cancellationToken);
+
+        _logger.LogWarning("İş başarısız: {JobId} | Kategori: {Category} | Mesaj: {Message}",
+            job.Id, failureCategory, errorMessage);
 
         return new ConversionResult
         {
@@ -186,13 +251,6 @@ public class ConversionOrchestrator : IConversionOrchestrator
         };
     }
 
-    private static ConversionResult StaticFail(Guid jobId, string message, FailureCategory category)
-        => new()
-        {
-            JobId = jobId,
-            Success = false,
-            ErrorMessage = message,
-            FailureCategory = category,
-            PipelineUsed = PipelineKind.None
-        };
+    private static FailureCategory ToFailureCategory(FailureCategory category)
+        => category == FailureCategory.None ? FailureCategory.Conversion : category;
 }

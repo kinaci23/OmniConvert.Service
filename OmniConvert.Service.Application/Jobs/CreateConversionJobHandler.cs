@@ -33,7 +33,8 @@ public class CreateConversionJobHandler
     {
         var jobId = Guid.NewGuid();
         var sourceFormat = DetectFormat(fileName);
-        var paths = await _storageService.PrepareJobStorageAsync(jobId, fileName, cancellationToken);
+        var paths = await _storageService.PrepareJobStorageAsync(
+                               jobId, fileName, cancellationToken);
 
         var job = new ConversionJob
         {
@@ -50,13 +51,16 @@ public class CreateConversionJobHandler
 
         job.Status = JobStatus.Queued;
         job.QueuedAtUtc = _clock.UtcNow;
-
         await _jobQueue.EnqueueAsync(jobId, cancellationToken);
         await _jobRepository.SaveAsync(job, cancellationToken);
 
         return job;
     }
 
+    /// <summary>
+    /// Dosya uzantısını domain format ailesine eşler.
+    /// jpg/jpeg → Jpeg, tif/tiff → Tiff olarak normalize edilir.
+    /// </summary>
     private static SourceFormat DetectFormat(string fileName)
     {
         var ext = Path.GetExtension(fileName)?.TrimStart('.').ToLowerInvariant();
@@ -66,11 +70,9 @@ public class CreateConversionJobHandler
             "docx" => SourceFormat.Docx,
             "xlsx" => SourceFormat.Xlsx,
             "pdf" => SourceFormat.Pdf,
-            "jpg" => SourceFormat.Jpg,
-            "jpeg" => SourceFormat.Jpeg,
+            "jpg" or "jpeg" => SourceFormat.Jpeg,
             "png" => SourceFormat.Png,
-            "tiff" => SourceFormat.Tiff,
-            "tif" => SourceFormat.Tif,
+            "tif" or "tiff" => SourceFormat.Tiff,
             _ => SourceFormat.Unknown
         };
     }

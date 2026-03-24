@@ -5,8 +5,8 @@ using OmniConvert.Service.Core.Interfaces;
 using OmniConvert.Service.Core.ValueObjects;
 
 /// <summary>
-/// Format → pipeline eşlemesini uygular.
-/// XLSX için birincil başarısız olduğunda devreye girecek yedek pipeline de belirlenir.
+/// Format ailesi → pipeline eşlemesi.
+/// XLSX için birincil başarısız olduğunda LibreOffice devreye girer.
 /// </summary>
 public class DefaultPipelineSelector : IPipelineSelector
 {
@@ -16,15 +16,16 @@ public class DefaultPipelineSelector : IPipelineSelector
             new(PipelineKind.LibreOfficeWordPdfBridge, Fallback: null),
 
         SourceFormat.Xlsx =>
-            new(PipelineKind.SyncfusionExcelRenderMerge, Fallback: PipelineKind.LibreOfficeExcelPdfBridge),
+            new(PipelineKind.SyncfusionExcelRenderMerge,
+                Fallback: PipelineKind.LibreOfficeExcelPdfBridge),
 
         SourceFormat.Pdf =>
             new(PipelineKind.GhostscriptScaled, Fallback: null),
 
-        SourceFormat.Jpg or SourceFormat.Jpeg or
-        SourceFormat.Png or SourceFormat.Tiff or SourceFormat.Tif =>
+        SourceFormat.Jpeg or SourceFormat.Png or SourceFormat.Tiff =>
             new(PipelineKind.RasterMagick, Fallback: null),
 
-        _ => throw new NotSupportedException($"Bu format için pipeline tanımlı değil: {format}")
+        _ => throw new NotSupportedException(
+                 $"Bu format için pipeline tanımlı değil: {format}")
     };
 }

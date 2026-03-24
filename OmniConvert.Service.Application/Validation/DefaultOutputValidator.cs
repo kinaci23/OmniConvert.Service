@@ -4,8 +4,8 @@ using OmniConvert.Service.Core.Interfaces;
 using OmniConvert.Service.Core.ValueObjects;
 
 /// <summary>
-/// v1 için minimal doğrulayıcı: çıktı yolunun boş olmadığını kontrol eder.
-/// İleride gerçek TIFF doğrulaması buraya eklenir.
+/// Minimum doğrulama: path boş değil + dosya gerçekten var mı.
+/// İleride: DPI, frame sayısı, compression tipi kontrolleri eklenecek.
 /// </summary>
 public class DefaultOutputValidator : IOutputValidator
 {
@@ -13,7 +13,10 @@ public class DefaultOutputValidator : IOutputValidator
         OutputValidationContext context,
         CancellationToken cancellationToken = default)
     {
-        var isValid = !string.IsNullOrWhiteSpace(context.OutputFilePath);
-        return Task.FromResult(isValid);
+        if (string.IsNullOrWhiteSpace(context.OutputFilePath))
+            return Task.FromResult(false);
+
+        var exists = File.Exists(context.OutputFilePath);
+        return Task.FromResult(exists);
     }
 }
