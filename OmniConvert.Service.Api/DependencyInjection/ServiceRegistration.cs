@@ -36,6 +36,8 @@ public static class ServiceRegistration
             configuration.GetSection(WorkerOptions.SectionName));
         services.Configure<GhostscriptOptions>(
             configuration.GetSection(GhostscriptOptions.SectionName));
+        services.Configure<LibreOfficeOptions>(
+            configuration.GetSection(LibreOfficeOptions.SectionName));
 
         // Singleton: API ve Worker aynı process içinde paylaşılır
         services.AddSingleton<IJobRepository, InMemoryJobRepository>();
@@ -47,11 +49,13 @@ public static class ServiceRegistration
         services.AddTransient<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddTransient<IClock, SystemClock>();
 
-        // Pipeline'lar
+        // GhostscriptScaledPipeline hem IConversionPipeline koleksiyonuna
+        // hem de concrete type olarak kayıtlı — LibreOffice pipeline doğrudan kullanır
+        services.AddTransient<GhostscriptScaledPipeline>();
+        services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeWordPdfBridgePipeline>();
         services.AddTransient<IConversionPipeline, SyncfusionExcelRenderMergePipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeExcelPdfBridgePipeline>();
-        services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, RasterMagickPipeline>();
 
         // Uygulama servisleri

@@ -39,6 +39,8 @@ public static class ServiceRegistration
             configuration.GetSection(WorkerOptions.SectionName));
         services.Configure<GhostscriptOptions>(
             configuration.GetSection(GhostscriptOptions.SectionName));
+        services.Configure<LibreOfficeOptions>(
+            configuration.GetSection(LibreOfficeOptions.SectionName));
 
         services.AddSingleton<IJobRepository, InMemoryJobRepository>();
         services.AddSingleton<IJobQueue, InMemoryJobQueue>();
@@ -48,10 +50,11 @@ public static class ServiceRegistration
         services.AddTransient<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddTransient<IClock, SystemClock>();
 
+        services.AddTransient<GhostscriptScaledPipeline>();
+        services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeWordPdfBridgePipeline>();
         services.AddTransient<IConversionPipeline, SyncfusionExcelRenderMergePipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeExcelPdfBridgePipeline>();
-        services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, RasterMagickPipeline>();
 
         services.AddTransient<IPipelineSelector, DefaultPipelineSelector>();

@@ -36,13 +36,17 @@ public class JobProcessingFlowTests : IDisposable
 
         var services = new ServiceCollection();
 
-        // Logging — pipeline'lar ILogger<T> kullandığı için gerekli
         services.AddLogging(b => b.AddProvider(NullLoggerProvider.Instance));
 
         services.Configure<StorageOptions>(o => o.BasePath = _testBasePath);
         services.Configure<GhostscriptOptions>(o =>
         {
             o.Path = "gs-stub-does-not-exist";
+            o.TimeoutSeconds = 30;
+        });
+        services.Configure<LibreOfficeOptions>(o =>
+        {
+            o.Path = string.Empty;
             o.TimeoutSeconds = 30;
         });
 
@@ -54,10 +58,12 @@ public class JobProcessingFlowTests : IDisposable
         services.AddTransient<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddTransient<IClock, SystemClock>();
 
+        // Concrete type kaydı — LibreOfficeWordPdfBridgePipeline için gerekli
+        services.AddTransient<GhostscriptScaledPipeline>();
+        services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeWordPdfBridgePipeline>();
         services.AddTransient<IConversionPipeline, SyncfusionExcelRenderMergePipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeExcelPdfBridgePipeline>();
-        services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, RasterMagickPipeline>();
 
         services.AddTransient<IPipelineSelector, DefaultPipelineSelector>();
@@ -91,7 +97,7 @@ public class JobProcessingFlowTests : IDisposable
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
 
-        // Ghostscript kurulu olmadığı için Failed beklenir — bu doğru davranış
+        // Ghostscript stub path olmadığı için Failed beklenir
         Assert.False(result.Success);
         Assert.Equal(FailureCategory.ExternalProcess, result.FailureCategory);
 
@@ -113,8 +119,8 @@ public class JobProcessingFlowTests : IDisposable
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
 
-        // LibreOffice stub hâlâ dosya yazıyor — Completed beklenir
-        Assert.True(result.Success);
+        // LibreOffice kurulu olmadığı için Failed beklenir
+        Assert.False(result.Success);
         Assert.Equal(PipelineKind.LibreOfficeWordPdfBridge, result.PipelineUsed);
     }
 
