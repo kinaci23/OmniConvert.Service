@@ -108,7 +108,6 @@ public class ConversionOrchestrator : IConversionOrchestrator
         job.AttemptCount += 1;
         await _jobRepository.SaveAsync(job, cancellationToken);
 
-        // Profil çözümleme — job'daki preset + type-safe override'lardan final profil üretilir
         ConversionProfile profile;
         try
         {
@@ -125,10 +124,11 @@ public class ConversionOrchestrator : IConversionOrchestrator
         }
 
         _logger.LogInformation(
-            "Profil çözümlendi: {Kind} | DPI={Dpi} | ColorMode={ColorMode} | Compression={Compression} | Customized={Customized}",
-            profile.Kind, profile.Dpi, profile.ColorMode, profile.CompressionType, profile.IsCustomized);
+            "Profil çözümlendi: {Kind} | DPI={Dpi} | ColorMode={ColorMode} | " +
+            "Compression={Compression} | Customized={Customized}",
+            profile.Kind, profile.Dpi, profile.ColorMode,
+            profile.CompressionType, profile.IsCustomized);
 
-        // Pipeline seçimi
         PipelineSelectionResult selection;
         try
         {
@@ -145,18 +145,12 @@ public class ConversionOrchestrator : IConversionOrchestrator
         await _jobRepository.SaveAsync(job, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(job.StoredOutputPath))
-        {
             return await FailJobAsync(job, "Output path belirlenmemiş.",
                 FailureCategory.Storage, null, cancellationToken);
-        }
 
         var context = new ConversionContext(
-            job.Id,
-            job.StoredInputPath,
-            job.StoredOutputPath,
-            workspace,
-            job.SourceFormat,
-            profile);
+            job.Id, job.StoredInputPath, job.StoredOutputPath,
+            workspace, job.SourceFormat, profile);
 
         // --- Birincil pipeline ---
         var primaryPipeline = ResolvePipeline(selection.Primary);
@@ -170,14 +164,21 @@ public class ConversionOrchestrator : IConversionOrchestrator
 
         var primaryResult = await primaryPipeline.ExecuteAsync(context, cancellationToken);
 
-        if (primaryResult.Success && await IsOutputValidAsync(primaryResult.OutputPath, cancellationToken))
-            return await CompleteJobAsync(job, primaryResult.OutputPath!, false,
-                selection.Primary, cancellationToken);
+        if (primaryResult.Success)
+        {
+            var validation = await ValidateOutputAsync(primaryResult.OutputPath, cancellationToken);
+            if (validation.IsValid)
+                return await CompleteJobAsync(job, primaryResult.OutputPath!, false,
+                    selection.Primary, cancellationToken);
+
+            _logger.LogWarning("Birincil pipeline çıktısı doğrulanamadı: {Reason} | Job: {JobId}",
+                validation.Message, job.Id);
+        }
 
         // --- Fallback pipeline ---
         if (selection.Fallback.HasValue)
         {
-            _logger.LogWarning("Birincil başarısız, fallback: {Fallback} | Job: {JobId}",
+            _logger.LogWarning("Fallback deneniyor: {Fallback} | Job: {JobId}",
                 selection.Fallback.Value, job.Id);
 
             var fallbackPipeline = ResolvePipeline(selection.Fallback.Value);
@@ -185,9 +186,17 @@ public class ConversionOrchestrator : IConversionOrchestrator
             {
                 var fallbackResult = await fallbackPipeline.ExecuteAsync(context, cancellationToken);
 
-                if (fallbackResult.Success && await IsOutputValidAsync(fallbackResult.OutputPath, cancellationToken))
-                    return await CompleteJobAsync(job, fallbackResult.OutputPath!, true,
-                        selection.Fallback.Value, cancellationToken);
+                if (fallbackResult.Success)
+                {
+                    var validation = await ValidateOutputAsync(fallbackResult.OutputPath, cancellationToken);
+                    if (validation.IsValid)
+                        return await CompleteJobAsync(job, fallbackResult.OutputPath!, true,
+                            selection.Fallback.Value, cancellationToken);
+
+                    return await FailJobAsync(job,
+                        $"Fallback çıktısı doğrulanamadı: {validation.Message}",
+                        FailureCategory.Conversion, selection.Fallback.Value, cancellationToken);
+                }
 
                 return await FailJobAsync(job,
                     fallbackResult.ErrorMessage ?? "Fallback başarısız.",
@@ -196,8 +205,11 @@ public class ConversionOrchestrator : IConversionOrchestrator
             }
         }
 
-        return await FailJobAsync(job,
-            primaryResult.ErrorMessage ?? "Birincil pipeline başarısız.",
+        var primaryError = primaryResult.Success
+            ? "Çıktı TIFF doğrulamasından geçemedi."
+            : primaryResult.ErrorMessage ?? "Birincil pipeline başarısız.";
+
+        return await FailJobAsync(job, primaryError,
             ToFailureCategory(primaryResult.FailureCategory),
             selection.Primary, cancellationToken);
     }
@@ -207,10 +219,15 @@ public class ConversionOrchestrator : IConversionOrchestrator
     private IConversionPipeline? ResolvePipeline(PipelineKind kind)
         => _pipelines.FirstOrDefault(p => p.Kind == kind);
 
-    private async Task<bool> IsOutputValidAsync(string? outputPath, CancellationToken ct)
+    private async Task<ValidationResult> ValidateOutputAsync(
+        string? outputPath,
+        CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(outputPath)) return false;
-        return await _outputValidator.ValidateAsync(new OutputValidationContext(outputPath), ct);
+        if (string.IsNullOrWhiteSpace(outputPath))
+            return ValidationResult.Fail("Pipeline output path boş döndü.");
+
+        return await _outputValidator.ValidateAsync(
+            new OutputValidationContext(outputPath), ct);
     }
 
     private async Task<ConversionResult> CompleteJobAsync(

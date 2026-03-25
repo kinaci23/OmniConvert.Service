@@ -4,7 +4,7 @@ using OmniConvert.Service.Core.ValueObjects;
 
 public interface IOutputValidator
 {
-    Task<bool> ValidateAsync(
+    Task<ValidationResult> ValidateAsync(
         OutputValidationContext context,
         CancellationToken cancellationToken = default);
 }
