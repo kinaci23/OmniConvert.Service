@@ -12,5 +12,6 @@ public record ConversionProfile(
     ColorMode ColorMode,
     CompressionType CompressionType,
     bool IsCustomized = false,
-    int? JpegQuality = null
+    int? JpegQuality = null,
+    byte? Threshold = null
 );

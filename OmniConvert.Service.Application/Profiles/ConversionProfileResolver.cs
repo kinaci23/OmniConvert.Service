@@ -18,12 +18,15 @@ public class ConversionProfileResolver
                 ColorMode: ColorMode.Gray,
                 CompressionType: CompressionType.LZW),
 
+            // Benchmark OcrDefault: Threshold=180, Ccitt4
             [ConversionProfileKind.OcrBinary300G4] = new(
                 ConversionProfileKind.OcrBinary300G4,
                 Dpi: 300,
                 ColorMode: ColorMode.Binary,
-                CompressionType: CompressionType.G4),
+                CompressionType: CompressionType.G4,
+                Threshold: 180),
 
+            // Benchmark VisualDefault: Rgb24Bit, Lzw
             [ConversionProfileKind.ArchiveColor300Lzw] = new(
                 ConversionProfileKind.ArchiveColor300Lzw,
                 Dpi: 300,
@@ -31,9 +34,6 @@ public class ConversionProfileResolver
                 CompressionType: CompressionType.LZW),
         };
 
-    /// <summary>
-    /// Geçerli ColorMode + CompressionType kombinasyonları.
-    /// </summary>
     private static readonly HashSet<(ColorMode, CompressionType)> ValidCombinations =
     [
         (ColorMode.Binary, CompressionType.G4),
@@ -53,7 +53,8 @@ public class ConversionProfileResolver
         int? dpiOverride = null,
         ColorMode? colorModeOverride = null,
         CompressionType? compressionOverride = null,
-        int? jpegQuality = null)
+        int? jpegQuality = null,
+        byte? threshold = null)
     {
         if (!Presets.TryGetValue(presetKind, out var preset))
             throw new ArgumentOutOfRangeException(nameof(presetKind),
@@ -63,16 +64,20 @@ public class ConversionProfileResolver
         var colorMode = colorModeOverride ?? preset.ColorMode;
         var compression = compressionOverride ?? preset.CompressionType;
         var quality = jpegQuality ?? preset.JpegQuality;
+        var thresh = threshold ?? preset.Threshold;
 
         var isCustomized = dpiOverride.HasValue
                         || colorModeOverride.HasValue
                         || compressionOverride.HasValue
-                        || jpegQuality.HasValue;
+                        || jpegQuality.HasValue
+                        || threshold.HasValue;
 
         ValidateDpi(dpi);
         ValidateCombination(colorMode, compression);
 
-        return new ConversionProfile(presetKind, dpi, colorMode, compression, isCustomized, quality);
+        return new ConversionProfile(
+            presetKind, dpi, colorMode, compression,
+            isCustomized, quality, thresh);
     }
 
     public ConversionProfile GetPreset(ConversionProfileKind kind)
