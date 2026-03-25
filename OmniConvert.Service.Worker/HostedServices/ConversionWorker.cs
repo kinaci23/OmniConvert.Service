@@ -7,7 +7,7 @@ using OmniConvert.Service.Core.Interfaces;
 
 /// <summary>
 /// Kuyruktan iş alır ve orchestrator'a iletir.
-/// Graceful shutdown: mevcut iş tamamlanır, yeni iş alınmaz.
+/// Graceful shutdown: stoppingToken iptal edildiğinde mevcut işi tamamlar, yeni iş almaz.
 /// </summary>
 public class ConversionWorker : BackgroundService
 {
@@ -27,44 +27,47 @@ public class ConversionWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("ConversionWorker başlatıldı.");
+        _logger.LogInformation(
+            "ConversionWorker başlatıldı | ThreadId: {ThreadId}",
+            Environment.CurrentManagedThreadId);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             Guid jobId = default;
-
             try
             {
-                // Kuyrukta iş yoksa burada bekler — CPU tüketmez
+                // Kuyrukta iş yoksa bekler — CPU tüketmez
                 jobId = await _jobQueue.DequeueAsync(stoppingToken);
 
-                _logger.LogInformation("İş işleniyor: {JobId}", jobId);
+                _logger.LogInformation("İş alındı | JobId: {JobId}", jobId);
 
-                // stoppingToken geçiliyor: iptal sinyali alınırsa pipeline da durur
                 var result = await _handler.HandleAsync(jobId, stoppingToken);
 
                 if (result.Success)
+                {
                     _logger.LogInformation(
-                        "İş tamamlandı: {JobId} | Pipeline: {Pipeline} | Fallback: {Fallback}",
+                        "Worker: İş tamamlandı | JobId: {JobId} | Pipeline: {Pipeline} | Fallback: {Fallback}",
                         jobId, result.PipelineUsed, result.UsedFallback);
+                }
                 else
+                {
                     _logger.LogWarning(
-                        "İş başarısız: {JobId} | Kategori: {Category} | Hata: {Error}",
+                        "Worker: İş başarısız | JobId: {JobId} | Category: {Category} | Error: {Error}",
                         jobId, result.FailureCategory, result.ErrorMessage);
+                }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                // Shutdown sinyali — döngüden temiz çık
+                // Graceful shutdown — döngüden temiz çık
                 _logger.LogInformation(
                     "ConversionWorker durduruluyor — iptal sinyali alındı.");
                 break;
             }
             catch (Exception ex)
             {
-                // İşlenmeyen hata — job zaten Failed olarak işaretlendi (Orchestrator garantisi)
-                // Worker çalışmaya devam eder
+                // Orchestrator job'u Failed olarak işaretledi — worker devam eder
                 _logger.LogError(ex,
-                    "ConversionWorker içinde işlenmeyen hata. Job: {JobId}", jobId);
+                    "Worker: İşlenmeyen hata | JobId: {JobId}", jobId);
             }
         }
 

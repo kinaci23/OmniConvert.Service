@@ -13,6 +13,7 @@ using OmniConvert.Service.Conversion.Pipelines.Pdf;
 using OmniConvert.Service.Conversion.Pipelines.Raster;
 using OmniConvert.Service.Conversion.Pipelines.Word;
 using OmniConvert.Service.Core.Interfaces;
+using OmniConvert.Service.Infrastructure.Concurrency;
 using OmniConvert.Service.Infrastructure.Configuration;
 using OmniConvert.Service.Infrastructure.Persistence;
 using OmniConvert.Service.Infrastructure.Processes;
@@ -38,10 +39,14 @@ public static class ServiceRegistration
             configuration.GetSection(GhostscriptOptions.SectionName));
         services.Configure<LibreOfficeOptions>(
             configuration.GetSection(LibreOfficeOptions.SectionName));
+        services.Configure<ConcurrencyOptions>(
+            configuration.GetSection(ConcurrencyOptions.SectionName));
 
         // Singleton: API ve Worker aynı process içinde paylaşılır
         services.AddSingleton<IJobRepository, InMemoryJobRepository>();
         services.AddSingleton<IJobQueue, InMemoryJobQueue>();
+        // Singleton: SemaphoreSlim state tutulur
+        services.AddSingleton<IConcurrencyLimiter, PipelineConcurrencyLimiter>();
 
         // Altyapı
         services.AddTransient<IStorageService, LocalFileStorageService>();
@@ -49,8 +54,7 @@ public static class ServiceRegistration
         services.AddTransient<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddTransient<IClock, SystemClock>();
 
-        // GhostscriptScaledPipeline hem IConversionPipeline koleksiyonuna
-        // hem de concrete type olarak kayıtlı — LibreOffice pipeline doğrudan kullanır
+        // Pipeline'lar
         services.AddTransient<GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeWordPdfBridgePipeline>();
