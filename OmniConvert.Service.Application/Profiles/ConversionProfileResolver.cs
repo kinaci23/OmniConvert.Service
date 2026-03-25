@@ -33,27 +33,27 @@ public class ConversionProfileResolver
 
     /// <summary>
     /// Geçerli ColorMode + CompressionType kombinasyonları.
-    /// G4 yalnızca Binary ile kullanılabilir (ITU-T T.6 faks standardı).
     /// </summary>
     private static readonly HashSet<(ColorMode, CompressionType)> ValidCombinations =
     [
         (ColorMode.Binary, CompressionType.G4),
         (ColorMode.Binary, CompressionType.LZW),
+        (ColorMode.Binary, CompressionType.None),
         (ColorMode.Gray,   CompressionType.LZW),
+        (ColorMode.Gray,   CompressionType.None),
         (ColorMode.Color,  CompressionType.LZW),
+        (ColorMode.Color,  CompressionType.Jpeg),
+        (ColorMode.Color,  CompressionType.None),
     ];
 
     private static readonly int[] AllowedDpiValues = [150, 200, 300, 400, 600];
 
-    /// <summary>
-    /// Preset ve opsiyonel override'lardan final profil üretir.
-    /// Geçersiz kombinasyon veya DPI durumunda ArgumentException fırlatır.
-    /// </summary>
     public ConversionProfile Resolve(
         ConversionProfileKind presetKind,
         int? dpiOverride = null,
         ColorMode? colorModeOverride = null,
-        CompressionType? compressionOverride = null)
+        CompressionType? compressionOverride = null,
+        int? jpegQuality = null)
     {
         if (!Presets.TryGetValue(presetKind, out var preset))
             throw new ArgumentOutOfRangeException(nameof(presetKind),
@@ -62,18 +62,19 @@ public class ConversionProfileResolver
         var dpi = dpiOverride ?? preset.Dpi;
         var colorMode = colorModeOverride ?? preset.ColorMode;
         var compression = compressionOverride ?? preset.CompressionType;
+        var quality = jpegQuality ?? preset.JpegQuality;
 
         var isCustomized = dpiOverride.HasValue
                         || colorModeOverride.HasValue
-                        || compressionOverride.HasValue;
+                        || compressionOverride.HasValue
+                        || jpegQuality.HasValue;
 
         ValidateDpi(dpi);
         ValidateCombination(colorMode, compression);
 
-        return new ConversionProfile(presetKind, dpi, colorMode, compression, isCustomized);
+        return new ConversionProfile(presetKind, dpi, colorMode, compression, isCustomized, quality);
     }
 
-    /// <summary>Preset değerini override uygulamadan döndürür.</summary>
     public ConversionProfile GetPreset(ConversionProfileKind kind)
     {
         if (!Presets.TryGetValue(kind, out var preset))
@@ -96,6 +97,6 @@ public class ConversionProfileResolver
         if (!ValidCombinations.Contains((colorMode, compression)))
             throw new ArgumentException(
                 $"Geçersiz kombinasyon: ColorMode={colorMode}, Compression={compression}. " +
-                "G4 yalnızca Binary ile kullanılabilir; LZW tüm modlarla uyumludur.");
+                "G4 yalnızca Binary ile, Jpeg yalnızca Color ile kullanılabilir.");
     }
 }

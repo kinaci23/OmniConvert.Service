@@ -24,9 +24,12 @@ public class ExternalProcessRunner : IExternalProcessRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory ?? string.Empty
+            CreateNoWindow = true
         };
+
+        // WorkingDirectory yalnızca doluysa set edilir
+        if (!string.IsNullOrWhiteSpace(workingDirectory))
+            psi.WorkingDirectory = workingDirectory;
 
         using var process = new Process { StartInfo = psi };
         process.Start();
@@ -35,7 +38,8 @@ public class ExternalProcessRunner : IExternalProcessRunner
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var timeoutCts =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
         try
@@ -44,7 +48,6 @@ public class ExternalProcessRunner : IExternalProcessRunner
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // Timeout — process'i öldür, caller'a timeout bildir
             process.Kill(entireProcessTree: true);
             throw new TimeoutException(
                 $"Process timeout: {executable} {timeoutSeconds}s içinde tamamlanamadı.");

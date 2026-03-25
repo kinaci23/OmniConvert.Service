@@ -33,8 +33,7 @@ public sealed class GhostscriptScaledPipeline : IConversionPipeline
     {
         if (!File.Exists(_options.Path))
         {
-            _logger.LogError(
-                "Ghostscript executable bulunamadı: {Path}", _options.Path);
+            _logger.LogError("Ghostscript executable bulunamadı: {Path}", _options.Path);
 
             return new PipelineExecutionResult(
                 Success: false,
@@ -113,40 +112,44 @@ public sealed class GhostscriptScaledPipeline : IConversionPipeline
     }
 
     // -------------------------------------------------------------------------
-    // Benchmark mapping'i birebir korunuyor — değiştirme.
+    // Benchmark mapping — değiştirme.
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Benchmark: ResolveGhostscriptDevice
-    /// Binary1Bit → tiffscaled
-    /// Grayscale8Bit → tiffscaled8
-    /// Rgb24Bit + Jpeg → tiff24nc
-    /// Rgb24Bit + diğer → tiffscaled24
+    /// Binary  → tiffscaled
+    /// Gray    → tiffscaled8
+    /// Color + Jpeg       → tiff24nc
+    /// Color + diğer      → tiffscaled24
     /// </summary>
     private static string ResolveGhostscriptDevice(ConversionProfile profile)
     {
-        if (profile.ColorMode == ColorMode.Binary)
-            return "tiffscaled";
-
-        if (profile.ColorMode == ColorMode.Gray)
-            return "tiffscaled8";
-
-        if (profile.ColorMode == ColorMode.Color)
-            return "tiffscaled24";
-
-        throw new NotSupportedException($"Desteklenmeyen ColorMode: {profile.ColorMode}");
+        return profile.ColorMode switch
+        {
+            ColorMode.Binary => "tiffscaled",
+            ColorMode.Gray => "tiffscaled8",
+            ColorMode.Color => profile.CompressionType == CompressionType.Jpeg
+                                    ? "tiff24nc"
+                                    : "tiffscaled24",
+            _ => throw new NotSupportedException(
+                     $"Desteklenmeyen ColorMode: {profile.ColorMode}")
+        };
     }
 
     /// <summary>
     /// Benchmark: ResolveCompressionArguments
-    /// Lzw → -sCompression=lzw
-    /// G4/Ccitt4 → -sCompression=g4
+    /// None   → -sCompression=none
+    /// LZW    → -sCompression=lzw
+    /// Jpeg   → -dJPEGQ={quality}
+    /// G4     → -sCompression=g4
     /// </summary>
     private static string ResolveCompressionArguments(ConversionProfile profile)
     {
         return profile.CompressionType switch
         {
+            CompressionType.None => "-sCompression=none",
             CompressionType.LZW => "-sCompression=lzw",
+            CompressionType.Jpeg => $"-dJPEGQ={(profile.JpegQuality ?? 85)}",
             CompressionType.G4 => "-sCompression=g4",
             _ => throw new NotSupportedException(
                      $"Desteklenmeyen CompressionType: {profile.CompressionType}")
@@ -154,12 +157,12 @@ public sealed class GhostscriptScaledPipeline : IConversionPipeline
     }
 
     /// <summary>
-    /// Benchmark: ResolveColorArguments — boş string döndürüyor, korunuyor.
+    /// Benchmark: ResolveColorArguments — boş string, korunuyor.
     /// </summary>
     private static string ResolveColorArguments(ConversionProfile profile) => string.Empty;
 
     /// <summary>
-    /// Benchmark argüman sırası korunuyor:
+    /// Benchmark argüman sırası:
     /// -dBATCH -dNOPAUSE -dSAFER -sDEVICE -r{dpi} {colorArgs} {compressionArgs} -sOutputFile input
     /// </summary>
     private static string BuildGhostscriptArguments(
@@ -170,8 +173,6 @@ public sealed class GhostscriptScaledPipeline : IConversionPipeline
     {
         var outputPath = QuotePath(context.OutputFilePath);
         var inputPath = QuotePath(context.InputFilePath);
-
-        // colorArgs boşsa fazladan boşluk bırakma
         var colorPart = string.IsNullOrWhiteSpace(colorArgs) ? string.Empty : $"{colorArgs} ";
 
         return $"-dBATCH " +

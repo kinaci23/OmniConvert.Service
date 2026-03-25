@@ -2,10 +2,13 @@
 
 /// <summary>
 /// Desteklenen TIFF sıkıştırma algoritmaları.
-/// G4 yalnızca Binary renk moduyla kullanılabilir (ITU-T faks standardı).
+/// G4 yalnızca Binary renk moduyla kullanılabilir (ITU-T T.6 faks standardı).
+/// Jpeg yalnızca Color renk moduyla kullanılabilir.
 /// </summary>
 public enum CompressionType
 {
-    G4 = 0,
-    LZW = 1
+    None = 0,
+    G4 = 1,
+    LZW = 2,
+    Jpeg = 3
 }
