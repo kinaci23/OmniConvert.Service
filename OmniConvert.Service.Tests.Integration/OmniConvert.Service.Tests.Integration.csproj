@@ -19,6 +19,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
     <PackageReference Include="Magick.NET-Q16-AnyCPU" Version="14.11.0" />
+    <PackageReference Include="Syncfusion.XlsIO.NET" Version="32.2.7" />
+    <PackageReference Include="Syncfusion.XlsIORenderer.NET" Version="32.2.7" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
