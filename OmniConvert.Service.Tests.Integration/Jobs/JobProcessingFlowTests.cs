@@ -15,6 +15,7 @@ using OmniConvert.Service.Conversion.Pipelines.Raster;
 using OmniConvert.Service.Conversion.Pipelines.Word;
 using OmniConvert.Service.Core.Enums;
 using OmniConvert.Service.Core.Interfaces;
+using OmniConvert.Service.Infrastructure.Concurrency;
 using OmniConvert.Service.Infrastructure.Configuration;
 using OmniConvert.Service.Infrastructure.Persistence;
 using OmniConvert.Service.Infrastructure.Processes;
@@ -49,16 +50,25 @@ public class JobProcessingFlowTests : IDisposable
             o.Path = string.Empty;
             o.TimeoutSeconds = 30;
         });
+        services.Configure<ConcurrencyOptions>(o =>
+        {
+            o.GhostscriptScaled = 2;
+            o.RasterMagick = 2;
+            o.LibreOfficeWordPdfBridge = 1;
+            o.SyncfusionExcelRenderMerge = 1;
+            o.LibreOfficeExcelPdfBridge = 1;
+            o.TotalMaxConcurrent = 4;
+        });
 
         services.AddSingleton<IJobRepository, InMemoryJobRepository>();
         services.AddSingleton<IJobQueue, InMemoryJobQueue>();
+        services.AddSingleton<IConcurrencyLimiter, PipelineConcurrencyLimiter>();
 
         services.AddTransient<IStorageService, LocalFileStorageService>();
         services.AddTransient<ITempWorkspaceFactory, TempWorkspaceFactory>();
         services.AddTransient<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddTransient<IClock, SystemClock>();
 
-        // Concrete type kaydı — LibreOfficeWordPdfBridgePipeline için gerekli
         services.AddTransient<GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, GhostscriptScaledPipeline>();
         services.AddTransient<IConversionPipeline, LibreOfficeWordPdfBridgePipeline>();
@@ -97,7 +107,6 @@ public class JobProcessingFlowTests : IDisposable
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
 
-        // Ghostscript stub path olmadığı için Failed beklenir
         Assert.False(result.Success);
         Assert.Equal(FailureCategory.ExternalProcess, result.FailureCategory);
 
@@ -119,7 +128,6 @@ public class JobProcessingFlowTests : IDisposable
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
 
-        // LibreOffice kurulu olmadığı için Failed beklenir
         Assert.False(result.Success);
         Assert.Equal(PipelineKind.LibreOfficeWordPdfBridge, result.PipelineUsed);
     }
