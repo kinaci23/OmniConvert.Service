@@ -98,8 +98,9 @@ public class JobProcessingFlowTests : IDisposable
         var statusHandler = _sp.GetRequiredService<GetConversionJobStatusHandler>();
         var queue = _sp.GetRequiredService<IJobQueue>();
 
+        await using var stream = new MemoryStream(new byte[] { 0x25, 0x50, 0x44, 0x46 });
         var job = await createHandler.HandleAsync(
-            "rapor.pdf", ConversionProfileKind.ArchiveColor300Lzw);
+            "rapor.pdf", stream, ConversionProfileKind.ArchiveColor300Lzw);
 
         Assert.Equal(JobStatus.Queued, job.Status);
         Assert.NotEmpty(job.StoredOutputPath);
@@ -123,8 +124,9 @@ public class JobProcessingFlowTests : IDisposable
         var processHandler = _sp.GetRequiredService<ProcessConversionJobHandler>();
         var queue = _sp.GetRequiredService<IJobQueue>();
 
+        await using var stream = new MemoryStream(new byte[] { 0x50, 0x4B, 0x03, 0x04 });
         var job = await createHandler.HandleAsync(
-            "belge.docx", ConversionProfileKind.OcrGray300Lzw);
+            "belge.docx", stream, ConversionProfileKind.OcrGray300Lzw);
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
 
@@ -139,8 +141,9 @@ public class JobProcessingFlowTests : IDisposable
         var repo = _sp.GetRequiredService<IJobRepository>();
         var queue = _sp.GetRequiredService<IJobQueue>();
 
+        await using var stream = new MemoryStream(new byte[] { 0x25, 0x50, 0x44, 0x46 });
         var job = await createHandler.HandleAsync(
-            "arsiv.pdf", ConversionProfileKind.ArchiveColor300Lzw,
+            "arsiv.pdf", stream, ConversionProfileKind.ArchiveColor300Lzw,
             dpiOverride: 600);
 
         await queue.DequeueAsync();
@@ -159,8 +162,9 @@ public class JobProcessingFlowTests : IDisposable
         var repo = _sp.GetRequiredService<IJobRepository>();
         var queue = _sp.GetRequiredService<IJobQueue>();
 
+        await using var stream = new MemoryStream(new byte[] { 0x25, 0x50, 0x44, 0x46 });
         var job = await createHandler.HandleAsync(
-            "test.pdf", ConversionProfileKind.OcrGray300Lzw,
+            "test.pdf", stream, ConversionProfileKind.OcrGray300Lzw,
             colorModeOverride: ColorMode.Binary,
             compressionOverride: CompressionType.LZW);
 
@@ -180,8 +184,9 @@ public class JobProcessingFlowTests : IDisposable
         var statusHandler = _sp.GetRequiredService<GetConversionJobStatusHandler>();
         var queue = _sp.GetRequiredService<IJobQueue>();
 
+        await using var stream = new MemoryStream(new byte[] { 0x00 });
         var job = await createHandler.HandleAsync(
-            "bilinmeyen.xyz", ConversionProfileKind.OcrBinary300G4);
+            "bilinmeyen.xyz", stream, ConversionProfileKind.OcrBinary300G4);
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
 

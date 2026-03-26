@@ -4,6 +4,10 @@ using OmniConvert.Service.Core.Entities;
 using OmniConvert.Service.Core.Enums;
 using OmniConvert.Service.Core.Interfaces;
 
+/// <summary>
+/// Yeni bir ConversionJob oluşturur, depoya kaydeder ve kuyruğa ekler.
+/// Dosya stream olarak alınır ve storage'a yazılır.
+/// </summary>
 public class CreateConversionJobHandler
 {
     private readonly IJobRepository _jobRepository;
@@ -23,13 +27,16 @@ public class CreateConversionJobHandler
         _clock = clock;
     }
 
+    /// <summary>
+    /// Multipart upload akışı: dosya stream storage'a yazılır.
+    /// </summary>
     public async Task<ConversionJob> HandleAsync(
         string fileName,
+        Stream fileStream,
         ConversionProfileKind profileKind,
         int? dpiOverride = null,
         ColorMode? colorModeOverride = null,
         CompressionType? compressionOverride = null,
-        string? sourceFilePath = null,
         CancellationToken cancellationToken = default)
     {
         var jobId = Guid.NewGuid();
@@ -37,10 +44,10 @@ public class CreateConversionJobHandler
         var paths = await _storageService.PrepareJobStorageAsync(
                                jobId, fileName, cancellationToken);
 
-        // Geliştirme ortamı: gerçek dosya varsa input klasörüne kopyala
-        // Multipart upload implementasyonunda bu blok kaldırılacak
-        if (!string.IsNullOrEmpty(sourceFilePath) && File.Exists(sourceFilePath))
-            File.Copy(sourceFilePath, paths.InputPath, overwrite: true);
+        // Dosyayı storage'a yaz — directory traversal riski yok (path storage tarafından üretildi)
+        await using var outputStream = new FileStream(
+            paths.InputPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        await fileStream.CopyToAsync(outputStream, cancellationToken);
 
         var job = new ConversionJob
         {

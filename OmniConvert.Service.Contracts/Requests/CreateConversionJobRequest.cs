@@ -2,11 +2,14 @@
 
 using OmniConvert.Service.Core.Enums;
 
+/// <summary>
+/// Yeni iş oluşturma isteği.
+/// Dosya multipart/form-data olarak gönderilir.
+/// Enum değerleri JSON'da string olarak yazılır.
+/// </summary>
 public record CreateConversionJobRequest(
-    string FileName,
     ConversionProfileKind ProfileKind,
     int? Dpi = null,
     ColorMode? ColorMode = null,
-    CompressionType? Compression = null,
-    string? SourceFilePath = null
+    CompressionType? Compression = null
 );

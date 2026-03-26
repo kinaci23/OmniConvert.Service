@@ -45,10 +45,12 @@ public class XlsxFallbackFlowTests : IDisposable
         var queue = sp.GetRequiredService<IJobQueue>();
 
         var inputPath = CreateTestXlsx("test_fallback.xlsx");
+        await using var stream = File.OpenRead(inputPath);
+
         var job = await createHandler.HandleAsync(
             "test_fallback.xlsx",
-            ConversionProfileKind.ArchiveColor300Lzw,
-            sourceFilePath: inputPath);
+            stream,
+            ConversionProfileKind.ArchiveColor300Lzw);
 
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
@@ -72,10 +74,12 @@ public class XlsxFallbackFlowTests : IDisposable
         var queue = sp.GetRequiredService<IJobQueue>();
 
         var inputPath = CreateTestXlsx("test_both_fail.xlsx");
+        await using var stream = File.OpenRead(inputPath);
+
         var job = await createHandler.HandleAsync(
             "test_both_fail.xlsx",
-            ConversionProfileKind.ArchiveColor300Lzw,
-            sourceFilePath: inputPath);
+            stream,
+            ConversionProfileKind.ArchiveColor300Lzw);
 
         var jobId = await queue.DequeueAsync();
         var result = await processHandler.HandleAsync(jobId);
@@ -96,15 +100,16 @@ public class XlsxFallbackFlowTests : IDisposable
         var queue = sp.GetRequiredService<IJobQueue>();
 
         var inputPath = CreateTestXlsx("test_cleanup.xlsx");
+        await using var stream = File.OpenRead(inputPath);
+
         var job = await createHandler.HandleAsync(
             "test_cleanup.xlsx",
-            ConversionProfileKind.ArchiveColor300Lzw,
-            sourceFilePath: inputPath);
+            stream,
+            ConversionProfileKind.ArchiveColor300Lzw);
 
         var jobId = await queue.DequeueAsync();
         await processHandler.HandleAsync(jobId);
 
-        // Temp workspace temizlenmiş olmalı
         var expectedWorkspace = Path.Combine(
             Path.GetTempPath(), "OmniConvert", "workspaces", jobId.ToString());
 
@@ -138,7 +143,6 @@ public class XlsxFallbackFlowTests : IDisposable
         services.AddTransient<ITempWorkspaceFactory, TempWorkspaceFactory>();
         services.AddTransient<IClock, SystemClock>();
 
-        // Syncfusion pipeline — kontrollü davranış
         if (syncfusionFails)
             services.AddTransient<IConversionPipeline>(
                 _ => new FakeFailingPipeline(
@@ -148,7 +152,6 @@ public class XlsxFallbackFlowTests : IDisposable
                 _ => new FakeSucceedingPipeline(
                     PipelineKind.SyncfusionExcelRenderMerge, SourceFormat.Xlsx));
 
-        // LibreOffice Excel pipeline — kontrollü davranış
         if (libreOfficeFails)
             services.AddTransient<IConversionPipeline>(
                 _ => new FakeFailingPipeline(
@@ -180,7 +183,6 @@ public class XlsxFallbackFlowTests : IDisposable
         IApplication app = engine.Excel;
         app.DefaultVersion = ExcelVersion.Xlsx;
         app.XlsIORenderer = new XlsIORenderer();
-
         IWorkbook workbook = app.Workbooks.Create(1);
         workbook.Worksheets[0].Range["A1"].Value = "OmniConvert Fallback Test";
 
@@ -196,8 +198,6 @@ public class XlsxFallbackFlowTests : IDisposable
             Directory.Delete(_testBasePath, recursive: true);
     }
 
-    // -------------------------------------------------------------------------
-    // Fake pipeline implementasyonları
     // -------------------------------------------------------------------------
 
     private sealed class FakeFailingPipeline : IConversionPipeline
