@@ -6,15 +6,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\OmniConvert.Service.Core\OmniConvert.Service.Core.csproj" />
     <ProjectReference Include="..\OmniConvert.Service.Application\OmniConvert.Service.Application.csproj" />
-    <ProjectReference Include="..\OmniConvert.Service.Infrastructure\OmniConvert.Service.Infrastructure.csproj" />
     <ProjectReference Include="..\OmniConvert.Service.Contracts\OmniConvert.Service.Contracts.csproj" />
     <ProjectReference Include="..\OmniConvert.Service.Conversion\OmniConvert.Service.Conversion.csproj" />
+    <ProjectReference Include="..\OmniConvert.Service.Infrastructure\OmniConvert.Service.Infrastructure.csproj" />
     <ProjectReference Include="..\OmniConvert.Service.Worker\OmniConvert.Service.Worker.csproj" />
   </ItemGroup>
 </Project>
